@@ -1,0 +1,14 @@
+# Had some trouble running the mosquitto image in the
+# local Windows development environment. Instead, it
+# is hosted directly on the machine.
+services:
+  influxdb:
+    image: influxdb:2
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    restart: unless-stopped
+
+volumes:
+  influxdb_data:
