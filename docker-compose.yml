@@ -5,8 +5,8 @@ services:
       - "1883:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto_passwords:/mosquitto/config/passwords
       - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
     restart: unless-stopped
 
   influxdb:
@@ -19,5 +19,4 @@ services:
 
 volumes:
   mosquitto_data:
-  mosquitto_log:
   influxdb_data:
