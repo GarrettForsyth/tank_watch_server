@@ -3,3 +3,4 @@ mosquitto_passwords
 */node_modules/
 */.env.production
 */.env.development
+*/tankwatch.db
