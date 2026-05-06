@@ -1,6 +1,6 @@
 # tankwatch-server
 
-Backend infrastructure for TankWatch — an IoT aquarium monitoring system. This repo contains the broker and database configuration, and the consumer service that bridges MQTT into InfluxDB.
+Backend infrastructure for TankWatch — an IoT aquarium monitoring system. This repo contains the broker and database configuration, the consumer service that bridges MQTT into InfluxDB, and the Express REST API that serves data to the Android app.
 
 ## What's in here
 
@@ -12,7 +12,9 @@ Backend infrastructure for TankWatch — an IoT aquarium monitoring system. This
 | `mosquitto_passwords` | Hashed credentials file — not committed, must be generated on the server |
 | `mosquitto_passwords.example` | Documents the expected format and generation command |
 | `pm2.config.js` | pm2 process definitions for production |
+| `tankwatch.db` | SQLite database — not committed, created automatically on first run |
 | `consumer/` | Node.js/TypeScript service — subscribes to MQTT, writes to InfluxDB |
+| `api/` | Node.js/TypeScript Express API — serves readings and config to the Android app |
 
 ---
 
@@ -86,14 +88,52 @@ INFLUXDB_ORG=tankwatch
 INFLUXDB_BUCKET=tankwatch
 ```
 
-### 4. Install dependencies and run
+### 4. Configure the API
 
 ```bash
+cd api
+cp .env.example .env.development
+```
+
+Fill in `.env.development`:
+
+```
+INFLUXDB_URL=http://localhost:8086
+INFLUXDB_TOKEN=<your influxdb token>
+INFLUXDB_ORG=tankwatch
+INFLUXDB_BUCKET=tankwatch
+
+SQLITE_DB_PATH=../tankwatch.db
+
+PORT=3000
+```
+
+### 5. Run the database migration
+
+On first run, or after any schema change, apply pending migrations:
+
+```bash
+cd api
 npm install
+npm run db:migrate
+```
+
+This creates `tankwatch.db` at the repo root if it doesn't exist, then applies all pending migrations. See [Database Migrations](#database-migrations) for more detail.
+
+### 6. Install dependencies and run
+
+```bash
+# Consumer
+cd consumer
+npm install
+npm run dev
+
+# API (separate terminal)
+cd api
 npm run dev
 ```
 
-You should see:
+You should see the consumer output:
 ```
 Connected to MQTT broker
 Subscribed to tankwatch/#
@@ -103,6 +143,27 @@ Readings from the ESP32 will appear as they arrive:
 ```
 [A4CF12345678] temperature/ds18b20: 24.06°C
 ```
+
+The API will be available at `http://localhost:3000`.
+
+---
+
+## Database Migrations
+
+The SQLite database (`tankwatch.db`) lives at the repo root, shared between the consumer and API. Schema is managed with [Drizzle ORM](https://orm.drizzle.team). The schema source of truth is `api/src/db/schema.ts` — Drizzle diffs it to generate migration SQL files.
+
+```bash
+cd api
+
+# After editing src/db/schema.ts:
+npm run db:generate   # generates a new SQL file in src/db/migrations/
+npm run db:migrate    # applies pending migrations to tankwatch.db
+
+# Inspect the database interactively:
+npm run db:studio     # opens Drizzle Studio in the browser
+```
+
+Generated migration files live in `api/src/db/migrations/` and are committed to git. **Never edit or delete a migration file after it has been applied** — Drizzle tracks applied migrations by filename. To undo a change, edit `schema.ts` back to the desired state and generate a new migration.
 
 ---
 
@@ -194,23 +255,57 @@ INFLUXDB_ORG=tankwatch
 INFLUXDB_BUCKET=tankwatch
 ```
 
-Start with pm2 from the repo root:
+### 7. Configure and start the API
 
 ```bash
-cd ..
+cd ../api
+npm install
+npm run build
+```
+
+Create `.env.production`:
+
+```
+INFLUXDB_URL=http://localhost:8086
+INFLUXDB_TOKEN=<your influxdb token>
+INFLUXDB_ORG=tankwatch
+INFLUXDB_BUCKET=tankwatch
+
+SQLITE_DB_PATH=../tankwatch.db
+
+PORT=3000
+```
+
+Run the database migration:
+
+```bash
+npm run db:migrate
+```
+
+Lock down the database file so only the process owner can read it:
+
+```bash
+chmod 600 ../tankwatch.db
+```
+
+### 8. Start all services with pm2
+
+From the repo root:
+
+```bash
 pm2 start pm2.config.js
 pm2 save
 ```
 
-Verify it's running:
+Verify both processes are running:
 
 ```bash
+pm2 status
 pm2 logs consumer
+pm2 logs api
 ```
 
-You should see `Connected to MQTT broker` and readings arriving.
-
-### 7. Configure pm2 to start on reboot (one-time setup)
+### 9. Configure pm2 to start on reboot (one-time setup)
 
 ```bash
 pm2 startup
@@ -233,6 +328,12 @@ Use [MQTT Explorer](https://mqtt-explorer.com) to verify the broker is reachable
 - Username/password: credentials you set during setup
 
 Use the InfluxDB UI (`http://localhost:8086` via SSH tunnel on VPS, or directly on local dev) to verify readings are landing in the Data Explorer.
+
+Use Drizzle Studio to inspect the SQLite database:
+
+```bash
+cd api && npm run db:studio
+```
 
 ---
 
@@ -259,6 +360,7 @@ docker compose logs -f mosquitto     # Follow live
 
 # pm2 services
 pm2 logs consumer                    # Consumer logs
+pm2 logs api                         # API logs
 pm2 logs                             # All process logs
 pm2 status                           # Overview of all processes
 ```
@@ -272,6 +374,11 @@ After pulling changes:
 ```bash
 git pull
 cd consumer && npm install && npm run build && cd ..
+cd api && npm install && npm run build && cd ..
+
+# Only if there are new migrations:
+cd api && npm run db:migrate && cd ..
+
 pm2 restart all
 pm2 save
 ```
