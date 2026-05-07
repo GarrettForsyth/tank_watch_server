@@ -10,10 +10,17 @@
 import express from 'express';
 import { authenticate } from './middleware/authenticate'
 import { errorHandler } from './middleware/errorHandler';
-import { readingsRouter } from './routes/readings';
+import { ReadingRepository } from './repositories/ReadingRepository';
+import { DeviceRepository } from './repositories/DeviceRepository';
+import { createReadingsRouter } from './routes/readings'
+import { createDevicesRouter } from './routes/devices';
+
+const readingRepository = new ReadingRepository();
+const deviceRepository = new DeviceRepository();
 
 export const app = express();
 app.use(authenticate);
 app.use(express.json());
-app.use('/api/readings/', readingsRouter);
+app.use('/api/readings/', createReadingsRouter(readingRepository));
+app.use('/api/devices/', createDevicesRouter(deviceRepository));
 app.use(errorHandler)

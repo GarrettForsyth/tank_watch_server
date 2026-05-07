@@ -9,11 +9,24 @@
  * publishes based on the device id + model. Once we add configuration upadtes,
  * we can add another field to support multiple sensors of the same model.
  ******************************************************************************/
+import { MeasurementType } from "./MeasurementType";
+
 export class Reading {
   constructor(
     public readonly time: string,
+    public readonly measurementType: MeasurementType,
     public readonly value: number,
-    public readonly deviceId: string,
-    public readonly sensorModel: string
+    public readonly macAddress: string,
+    public readonly sensorModel: string,
   ) {}
+
+  static fromInflux(record: Record<string, unknown>): Reading {
+    return new Reading(
+      record._time as string,
+      record._measurement as MeasurementType,
+      record._value as number,
+      record.device_id as string, // Device id is mac address published by device here
+      record.sensor_model as string
+    )
+  }
 }

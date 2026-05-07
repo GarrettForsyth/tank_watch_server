@@ -8,9 +8,17 @@
  * Endpoints for the readings route.
  ******************************************************************************/
 import { Router } from 'express'
+import { ReadingRepository } from '../repositories/ReadingRepository';
+import { ReadingController } from '../controllers/ReadingController';
 
-export const readingsRouter = Router();
+export function createReadingsRouter(readingRepository: ReadingRepository) {
+  const router = Router();
+  const controller = new ReadingController(readingRepository);
 
-readingsRouter.get('/', (_req, res) => {
-  res.json({ message: 'TODO: Add get readings'})
-});
+  router.get('/', (req, res, next) => {
+    controller.getLastReadings(req, res, next);
+  });
+
+  return router;
+}
+

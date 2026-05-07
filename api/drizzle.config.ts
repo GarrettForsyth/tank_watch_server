@@ -12,6 +12,6 @@ export default defineConfig({
   out: './src/db/migrations',
   dialect: 'sqlite',
   dbCredentials: {
-    url: process.env.SQLITE_DB_PATH ?? './tankwatch.db',
+    url: process.env.SQLITE_DB_PATH ?? '../tankwatch.db',
   },
 });
