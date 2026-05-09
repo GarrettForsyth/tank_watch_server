@@ -25,18 +25,26 @@ const client = new InfluxDB({
 const writeApi = client.getWriteApi(
     process.env.INFLUXDB_ORG!,
     process.env.INFLUXDB_BUCKET!,
-    's' // timestamp precision -> seconds
+    's', // timestamp precision -> seconds
+    // Note: These are the default settings, but for some reason, without
+    // explicitly setting them here they wre not being applied.
+    {
+      batchSize: 1000,        // How many points to batch before a write
+      flushInterval: 1000     // How often (in ms) to write the current batch
+    }
 );
 
 export function writeReading(
     value: number,
     deviceId: string,
     measurementType: string,
-    sensorModel: string
+    sensorModel: string,
+    romAddress: string
 ): void {
     const point = new Point(measurementType)
         .tag('device_id', deviceId)
         .tag('sensor_model', sensorModel)
+        .tag('rom_address', romAddress)
         .floatField('value', value);
 
     writeApi.writePoint(point);

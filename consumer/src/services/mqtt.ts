@@ -8,12 +8,13 @@
  *
  * We expect the readings to be published in form:
  *
- * tankwatch/{deviceId}/readings/{measurementType}/{sensorModel}
+ * tankwatch/{deviceId}/readings/{measurementType}/{sensorModel}/{romAddress}
  *
  * where:
  *   - deviceId is the MAC address of the device sending the data
  *   - measurementType is the type of sensor data (ex/ temperature)
  *   - sensorModel is the model of the device performing the readings
+ *   - romAddress is the unique hardware id of the sensor
  *
  * Note: it is possible for devices to have multiple sensors of the 
  * same type. These can be distinguished by examing the payload
@@ -24,23 +25,24 @@ import { writeReading } from './influxdb';
 const TOPIC = 'tankwatch/#';
 
 // Capture groups for the deviceId, measurement type, and topic
-// tankwatch/{deviceId}/readings/{measurementType}/{sensorModel}
-const TOPIC_REGEX = /^tankwatch\/([^/]+)\/readings\/([^/]+)\/([^/]+)$/;
+// tankwatch/{deviceId}/readings/{measurementType}/{sensorModel}/{romAddress}
+const TOPIC_REGEX = /^tankwatch\/([^/]+)\/readings\/([^/]+)\/([^/]+)\/([^/]+)$/;
 
 function parseTopic(topic: string): { 
     deviceId: string;
     measurementType: string;
-    sensorModel: string 
+    sensorModel: string,
+    romAddress: string
 } | null {
     // Return null if we fail to match
     const match = topic.match(TOPIC_REGEX);
     if (!match) return null;
     
     // Destructured assignment (1st group matches the whole thing so skip it)
-    const [, deviceId, measurementType, sensorModel] = match;
-    if (!deviceId || !measurementType || !sensorModel) return null;
+    const [, deviceId, measurementType, sensorModel, romAddress] = match;
+    if (!deviceId || !measurementType || !sensorModel || !romAddress) return null;
 
-    return { deviceId, measurementType, sensorModel };
+    return { deviceId, measurementType, sensorModel, romAddress };
 }
 
 function parsePayload(payload: Buffer): number | null {
@@ -84,8 +86,8 @@ export function startMqttConsumer(): MqttClient {
             return;
         }
 
-        console.log(`[${parsed.deviceId}] ${parsed.measurementType}/${parsed.sensorModel}: ${value}`);
-        writeReading(value, parsed.deviceId, parsed.measurementType, parsed.sensorModel);
+        console.log(`[${parsed.deviceId}] ${parsed.measurementType}/${parsed.sensorModel}/${parsed.romAddress}: ${value}`);
+        writeReading(value, parsed.deviceId, parsed.measurementType, parsed.sensorModel, parsed.romAddress);
     });
 
     // Just log these events to help with debugging
