@@ -8,7 +8,7 @@
  * A device is the board/microcontroller the sensors are attached to
  ******************************************************************************/
 import type { InferSelectModel } from 'drizzle-orm'
-import { devices} from '@tankwatch/shared/src/db/schema'
+import { devices } from '@tankwatch/shared/src/db/schema'
 type DeviceRow = InferSelectModel<typeof devices>;
 
 export class Device {

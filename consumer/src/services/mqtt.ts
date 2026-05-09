@@ -21,6 +21,7 @@
  */
 import mqtt, { MqttClient } from 'mqtt';
 import { writeReading } from './influxdb';
+import { upsertDeviceAndSensor } from './sqliteService';
 
 const TOPIC = 'tankwatch/#';
 
@@ -87,7 +88,10 @@ export function startMqttConsumer(): MqttClient {
         }
 
         console.log(`[${parsed.deviceId}] ${parsed.measurementType}/${parsed.sensorModel}/${parsed.romAddress}: ${value}`);
+        // Record the reading in the real time database
         writeReading(value, parsed.deviceId, parsed.measurementType, parsed.sensorModel, parsed.romAddress);
+        // Update the SQL database if it's the first time seeing the device or sensor
+        upsertDeviceAndSensor(parsed.deviceId, parsed.sensorModel, parsed.romAddress); 
     });
 
     // Just log these events to help with debugging

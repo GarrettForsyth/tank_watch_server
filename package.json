@@ -1,0 +1,9 @@
+{
+  "name": "tankwatch-server",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "api",
+    "consumer"
+  ]
+}

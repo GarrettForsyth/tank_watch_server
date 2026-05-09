@@ -5,7 +5,7 @@
  * Date: May 7th 2026
  * Description: Repository for accessing device data.
  ******************************************************************************/
-import { db } from '@tankwatch/shared/src/db'
+import { db } from '@tankwatch/shared/src/db/index'
 import { devices, sensors } from '@tankwatch/shared/src/db/schema'
 import { eq } from 'drizzle-orm'
 import { Device } from '../models/Device'
