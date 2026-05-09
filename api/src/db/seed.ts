@@ -52,6 +52,7 @@ async function seed() {
         db.insert(sensors).values({
             deviceId: device.id,
             model: 'DS18B20',
+            romAddress: '28FF70B85B64C87B',
             displayName: 'Water Temperature',
         }).returning().all(),
         'sensor'

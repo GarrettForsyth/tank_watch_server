@@ -50,6 +50,7 @@ export const sensors = sqliteTable('sensors', {
     id:          integer('id').primaryKey({ autoIncrement: true }),
     deviceId:    integer('device_id').notNull().references(() => devices.id),
     model:       text('model').notNull(),
+    romAddress:  text('rom_address').notNull().unique(),
     displayName: text('display_name'),
     createdAt:   text('created_at').notNull().default(sql`(datetime('now'))`),
 });
