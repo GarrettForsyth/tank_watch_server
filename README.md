@@ -13,6 +13,7 @@ Backend infrastructure for TankWatch — an IoT aquarium monitoring system. This
 | `mosquitto_passwords.example` | Documents the expected format and generation command |
 | `pm2.config.js` | pm2 process definitions for production |
 | `tankwatch.db` | SQLite database — not committed, created automatically on first run |
+| `shared/` | `@tankwatch/shared` — SQLite schema, migrations, and db connection shared across packages |
 | `consumer/` | Node.js/TypeScript service — subscribes to MQTT, writes to InfluxDB |
 | `api/` | Node.js/TypeScript Express API — serves readings and config to the Android app |
 
@@ -108,29 +109,35 @@ SQLITE_DB_PATH=../tankwatch.db
 PORT=3000
 ```
 
-### 5. Run the database migration
+### 5. Install dependencies
 
-On first run, or after any schema change, apply pending migrations:
+Always install from the repo root — this ensures npm workspaces hoists all dependencies correctly and prevents duplicate installs of shared packages like `drizzle-orm`:
 
 ```bash
-cd api
+cd tank_watch_server
 npm install
-npm run db:migrate
+```
+
+Never run `npm install` from inside a sub-package (`consumer/`, `api/`, `shared/`) — this can create nested `node_modules` and break shared dependency resolution.
+
+### 6. Run the database migration
+
+On first run, or after any schema change, apply pending migrations from the `shared` package:
+
+```bash
+npm run db:migrate -w shared
 ```
 
 This creates `tankwatch.db` at the repo root if it doesn't exist, then applies all pending migrations. See [Database Migrations](#database-migrations) for more detail.
 
-### 6. Install dependencies and run
+### 7. Run the services
 
 ```bash
-# Consumer
-cd consumer
-npm install
-npm run dev
+# Consumer (terminal 1)
+npm run dev -w consumer
 
-# API (separate terminal)
-cd api
-npm run dev
+# API (terminal 2)
+npm run dev -w api
 ```
 
 You should see the consumer output:
@@ -150,20 +157,22 @@ The API will be available at `http://localhost:3000`.
 
 ## Database Migrations
 
-The SQLite database (`tankwatch.db`) lives at the repo root, shared between the consumer and API. Schema is managed with [Drizzle ORM](https://orm.drizzle.team). The schema source of truth is `api/src/db/schema.ts` — Drizzle diffs it to generate migration SQL files.
+The SQLite database (`tankwatch.db`) lives at the repo root, shared between the consumer and API. Schema is managed with [Drizzle ORM](https://orm.drizzle.team). The schema source of truth is `shared/src/db/schema.ts` — Drizzle diffs it to generate migration SQL files.
+
+All database tooling is run from the `shared` package:
 
 ```bash
-cd api
-
-# After editing src/db/schema.ts:
-npm run db:generate   # generates a new SQL file in src/db/migrations/
-npm run db:migrate    # applies pending migrations to tankwatch.db
+# After editing shared/src/db/schema.ts:
+npm run db:generate -w shared   # generates a new SQL file in shared/src/db/migrations/
+npm run db:migrate -w shared    # applies pending migrations to tankwatch.db
 
 # Inspect the database interactively:
-npm run db:studio     # opens Drizzle Studio in the browser
+npm run db:studio -w shared     # opens Drizzle Studio in the browser
 ```
 
-Generated migration files live in `api/src/db/migrations/` and are committed to git. **Never edit or delete a migration file after it has been applied** — Drizzle tracks applied migrations by filename. To undo a change, edit `schema.ts` back to the desired state and generate a new migration.
+Generated migration files live in `shared/src/db/migrations/` and are committed to git. **Never edit or delete a migration file after it has been applied** — Drizzle tracks applied migrations by filename. To undo a change, edit `schema.ts` back to the desired state and generate a new migration.
+
+The `migrations/meta/` directory must also be committed — Drizzle uses it to diff the schema for the next migration.
 
 ---
 
@@ -174,6 +183,17 @@ All services run on a single Linux VPS via Docker and pm2. Ubuntu 24.04 is recom
 ### Prerequisites
 
 - A VPS with Docker, Docker Compose, Node.js 22, and pm2 installed
+- `build-essential` installed — required for `better-sqlite3` to compile from source:
+  ```bash
+  apt-get install -y build-essential
+  ```
+- A swap file is recommended on 1GB RAM droplets — native module compilation is memory-intensive:
+  ```bash
+  fallocate -l 1G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  ```
 - Ports 22, 1883, and 443 open inbound in your firewall
 - InfluxDB (8086) must **not** be exposed externally
 
@@ -184,7 +204,15 @@ git clone git@github.com:yourusername/tankwatch-server.git
 cd tankwatch-server
 ```
 
-### 2. Start the containers
+### 2. Install dependencies
+
+Always install from the repo root:
+
+```bash
+npm install
+```
+
+### 3. Start the containers
 
 ```bash
 docker compose up -d
@@ -196,7 +224,7 @@ Verify both containers are running:
 docker compose ps
 ```
 
-### 3. Generate the Mosquitto password file
+### 4. Generate the Mosquitto password file
 
 ```bash
 docker run --rm -it -v $(pwd):/mosquitto/config eclipse-mosquitto:2 mosquitto_passwd -c /mosquitto/config/mosquitto_passwords tankwatch
@@ -209,7 +237,7 @@ chown 1883:1883 mosquitto_passwords
 chmod 0700 mosquitto_passwords
 ```
 
-### 4. Restart Mosquitto to apply auth
+### 5. Restart Mosquitto to apply auth
 
 ```bash
 docker compose restart mosquitto
@@ -221,7 +249,7 @@ Verify it started cleanly — you should see `mosquitto version 2.x.x running` w
 docker compose logs mosquitto
 ```
 
-### 5. Set up InfluxDB
+### 6. Set up InfluxDB
 
 SSH tunnel to access the InfluxDB UI from your local machine:
 
@@ -234,15 +262,9 @@ Then visit `http://localhost:8086` and complete the initial setup:
 - Create a bucket (e.g. `tankwatch`)
 - Copy the generated API token
 
-### 6. Configure and start the consumer
+### 7. Configure the consumer
 
-```bash
-cd consumer
-npm install
-npm run build
-```
-
-Create `.env.production`:
+Create `.env.production` in `consumer/`:
 
 ```
 MQTT_BROKER_URL=mqtt://localhost:1883
@@ -255,15 +277,15 @@ INFLUXDB_ORG=tankwatch
 INFLUXDB_BUCKET=tankwatch
 ```
 
-### 7. Configure and start the API
+Build the consumer:
 
 ```bash
-cd ../api
-npm install
-npm run build
+cd consumer && npm run build && cd ..
 ```
 
-Create `.env.production`:
+### 8. Configure the API
+
+Create `.env.production` in `api/`:
 
 ```
 INFLUXDB_URL=http://localhost:8086
@@ -276,19 +298,25 @@ SQLITE_DB_PATH=../tankwatch.db
 PORT=3000
 ```
 
-Run the database migration:
+Build the API:
 
 ```bash
-npm run db:migrate
+cd api && npm run build && cd ..
+```
+
+### 9. Run the database migration
+
+```bash
+npm run db:migrate -w shared
 ```
 
 Lock down the database file so only the process owner can read it:
 
 ```bash
-chmod 600 ../tankwatch.db
+chmod 600 tankwatch.db
 ```
 
-### 8. Start all services with pm2
+### 10. Start all services with pm2
 
 From the repo root:
 
@@ -305,7 +333,7 @@ pm2 logs consumer
 pm2 logs api
 ```
 
-### 9. Configure pm2 to start on reboot (one-time setup)
+### 11. Configure pm2 to start on reboot (one-time setup)
 
 ```bash
 pm2 startup
@@ -332,7 +360,7 @@ Use the InfluxDB UI (`http://localhost:8086` via SSH tunnel on VPS, or directly 
 Use Drizzle Studio to inspect the SQLite database:
 
 ```bash
-cd api && npm run db:studio
+npm run db:studio -w shared
 ```
 
 ---
@@ -373,11 +401,12 @@ After pulling changes:
 
 ```bash
 git pull
-cd consumer && npm install && npm run build && cd ..
-cd api && npm install && npm run build && cd ..
+npm install
+cd consumer && npm run build && cd ..
+cd api && npm run build && cd ..
 
 # Only if there are new migrations:
-cd api && npm run db:migrate && cd ..
+npm run db:migrate -w shared
 
 pm2 restart all
 pm2 save
