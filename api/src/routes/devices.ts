@@ -1,11 +1,11 @@
 /*******************************************************************************
- * Filename: devies.ts
+ * Filename: devices.ts
  * Project: Tank Watch (Server)
  * Author: Garrett Forsyth
  * Date: May 6th 2026
  * Description:
  *
- * Endpoints for the device route.
+ * Endpoints for the device resource.
  ******************************************************************************/
 import { Router } from 'express'
 import { DeviceRepository } from '../repositories/DeviceRepository'

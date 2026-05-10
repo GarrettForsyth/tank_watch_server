@@ -7,6 +7,10 @@
  *
  * The sensor configuation contains properties that dictates how it behaves.
  ******************************************************************************/
+import type { InferSelectModel } from 'drizzle-orm'
+import { sensorConfig } from '@tankwatch/shared/src/db/schema'
+type SensorConfigRow = InferSelectModel<typeof sensorConfig>;
+
 export class SensorConfig {
   constructor(
     public readonly id: number,
@@ -15,4 +19,14 @@ export class SensorConfig {
     public readonly minValue: number | null,
     public readonly maxValue: number | null
   ) {}
+
+  static fromDrizzle(row: SensorConfigRow): SensorConfig {
+    return new SensorConfig(
+      row.id,
+      row.updateIntervalSeconds,
+      row.notificationsEnabled,
+      row.minValue,
+      row.maxValue
+    )
+  }
 }

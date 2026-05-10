@@ -26,7 +26,7 @@ export class DeviceRepository {
     let result = db
       .select()
       .from(devices)
-      .leftJoin(tanks, eq(devices.id, tanks.id))
+      .innerJoin(tanks, eq(devices.tankId, tanks.id))
       .where(eq(tanks.userId, userId))
       .all();
 
