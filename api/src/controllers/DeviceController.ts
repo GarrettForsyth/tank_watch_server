@@ -17,6 +17,21 @@ export class DeviceController {
 
   constructor(private readonly deviceRepository: DeviceRepository) {}
 
+  async getAll(
+    _req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      // TODO: Parse user_id from auth and filter by that
+      const tempUserId = 1;
+      const devices = this.deviceRepository.getAll(tempUserId);
+      res.json(devices);
+    } catch (error) {
+      next(error)
+    }
+  }
+
   async getSensors(
     req: Request,
     res: Response,

@@ -15,6 +15,12 @@ export function createDevicesRouter(deviceRepository: DeviceRepository) {
     const router = Router();
     const controller = new DeviceController(deviceRepository);
 
+    // Get all devices
+    router.get('/', (req, res, next) =>
+        controller.getAll(req, res, next)
+    );
+
+    // Get all sensors for a device
     router.get('/:deviceId/sensors', (req, res, next) =>
         controller.getSensors(req, res, next)
     );
