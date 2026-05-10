@@ -13,13 +13,16 @@ import { errorHandler } from './middleware/errorHandler';
 import { ReadingRepository } from './repositories/ReadingRepository';
 import { DeviceRepository } from './repositories/DeviceRepository';
 import { SensorRepository } from './repositories/SensorRepository';
+import { NotificationRepository } from './repositories/NotificationRepository';
 import { createReadingsRouter } from './routes/readings'
 import { createDevicesRouter } from './routes/devices';
 import { createSensorsRouter } from './routes/sensors';
+import { createNotificationsRouter } from './routes/notifications';
 
 const readingRepository = new ReadingRepository();
 const deviceRepository = new DeviceRepository();
 const sensorRepository = new SensorRepository();
+const notificationRepository = new NotificationRepository();
 
 export const app = express();
 app.use(authenticate);
@@ -27,4 +30,5 @@ app.use(express.json());
 app.use('/api/readings/', createReadingsRouter(readingRepository));
 app.use('/api/devices/', createDevicesRouter(deviceRepository));
 app.use('/api/sensors/', createSensorsRouter(sensorRepository));
+app.use('/api/notifications/', createNotificationsRouter(notificationRepository));
 app.use(errorHandler)

@@ -68,7 +68,8 @@ export const sensorConfig = sqliteTable('sensor_config', {
 
 export const pushTokens = sqliteTable('push_tokens', {
     id:        integer('id').primaryKey({ autoIncrement: true }),
-    userId:    integer('user_id').notNull().references(() => users.id),
+    userId:    integer('user_id').notNull().references(() => users.id).unique(),
     token:     text('token').notNull(),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt:             text('updated_at').notNull().default(sql`(datetime('now'))`),
 });
