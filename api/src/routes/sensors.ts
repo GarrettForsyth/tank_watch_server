@@ -20,6 +20,11 @@ export function createSensorsRouter(sensorRepository: SensorRepository) {
         controller.getConfiguration(req, res, next)
     );
 
+    // Upsert sensor configuration
+    router.put('/:sensorId/config', (req, res, next) =>
+        controller.upsertConfiguration(req, res, next)
+    );
+
     return router;
 }
 
