@@ -28,7 +28,7 @@ export class DeviceRepository {
       .from(devices)
       .innerJoin(tanks, eq(devices.tankId, tanks.id))
       .where(eq(tanks.userId, userId))
-      .all();
+      .all()
 
     return result.map(r => Device.fromDrizzle(r.devices));
   }
@@ -38,6 +38,7 @@ export class DeviceRepository {
       .select()
       .from(sensors)
       .where(eq(sensors.deviceId, deviceId))
-      .all();
+      .all()
+      .map(row => Sensor.fromDrizzle(row));
   }
 }
