@@ -23,10 +23,13 @@
 import { sqliteTable, integer, real, text } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
+// Format the default timestamps to comform to ISO
+const isoDefault = () => sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`
+
 export const users = sqliteTable('users', {
     id:         integer('id').primaryKey({ autoIncrement: true }),
     externalId: text('external_id').unique(),
-    createdAt:  text('created_at').notNull().default(sql`(datetime('now'))`),
+    createdAt:  text('created_at').notNull().default(isoDefault())
 });
 
 export const tanks = sqliteTable('tanks', {
@@ -34,7 +37,7 @@ export const tanks = sqliteTable('tanks', {
     userId:      integer('user_id').notNull().references(() => users.id),
     name:        text('name').notNull(),
     description: text('description'),
-    createdAt:   text('created_at').notNull().default(sql`(datetime('now'))`),
+    createdAt:   text('created_at').notNull().default(isoDefault())
 });
 
 export const devices = sqliteTable('devices', {
@@ -43,7 +46,7 @@ export const devices = sqliteTable('devices', {
     macAddress:      text('mac_address').notNull().unique(),
     name:            text('name'),
     firmwareVersion: text('firmware_version'),
-    createdAt:       text('created_at').notNull().default(sql`(datetime('now'))`),
+    createdAt:       text('created_at').notNull().default(isoDefault())
 });
 
 export const sensors = sqliteTable('sensors', {
@@ -52,7 +55,7 @@ export const sensors = sqliteTable('sensors', {
     model:       text('model').notNull(),
     romAddress:  text('rom_address').notNull().unique(),
     displayName: text('display_name'),
-    createdAt:   text('created_at').notNull().default(sql`(datetime('now'))`),
+    createdAt:   text('created_at').notNull().default(isoDefault())
 });
 
 export const sensorConfig = sqliteTable('sensor_config', {
@@ -62,14 +65,14 @@ export const sensorConfig = sqliteTable('sensor_config', {
     notificationsEnabled:  integer('notifications_enabled', { mode: 'boolean' }).notNull().default(true),
     minValue:              real('min_value'),
     maxValue:              real('max_value'),
-    createdAt:             text('created_at').notNull().default(sql`(datetime('now'))`),
-    updatedAt:             text('updated_at').notNull().default(sql`(datetime('now'))`),
+    createdAt:             text('created_at').notNull().default(isoDefault()),
+    updatedAt:             text('updated_at').notNull().default(isoDefault())
 });
 
 export const pushTokens = sqliteTable('push_tokens', {
     id:        integer('id').primaryKey({ autoIncrement: true }),
     userId:    integer('user_id').notNull().references(() => users.id).unique(),
     token:     text('token').notNull(),
-    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-    updatedAt:             text('updated_at').notNull().default(sql`(datetime('now'))`),
+    createdAt: text('created_at').notNull().default(isoDefault()),
+    updatedAt: text('updated_at').notNull().default(isoDefault())
 });
