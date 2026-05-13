@@ -16,6 +16,7 @@ export class Sensor {
     public readonly id: number,
     public readonly deviceId: number,
     public readonly model: string,
+    public readonly romAddress: string,
     public readonly displayName: string | null
   ) {}
 
@@ -24,6 +25,7 @@ export class Sensor {
       row.id,
       row.deviceId,
       row.model,
+      row.romAddress,
       row.displayName
     )
   }
