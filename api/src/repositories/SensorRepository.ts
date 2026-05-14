@@ -10,8 +10,18 @@ import { devices, sensors, tanks, sensorConfig, users } from '@tankwatch/shared/
 import { eq, and } from 'drizzle-orm'
 import { SensorConfig } from '../models/SensorConfig'
 import { User } from '../models/User'
+import { Sensor } from '../models/Sensor'
 
 export class SensorRepository {
+
+  getSensor(sensorId: number) : Sensor | null {
+    const sensor = db
+      .select()
+      .from(sensors)
+      .where(eq(sensors.id, sensorId))
+      .get()
+    return sensor ? Sensor.fromDrizzle(sensor) : null;
+  }
 
   getSensorOwner(sensorId: number): User | null {
     let owner = db

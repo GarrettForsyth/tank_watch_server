@@ -30,13 +30,13 @@ export class ReadingRepository {
    *
    * Parmeters:
    *   - macAddress: The mac address of the device to get readings for.a
-   *   - sensorModel: The sensor model reporting the readings.
+   *   - romAddress: The rom address of the sensor reporting the readings.
    *   - range: The time range to in which to get readings for (ex/ 1h, 30m, 3w, 6mo, 1y)
    * Returns: A Promising containing the list of Readings if any.
    */
   async getLastReadings(
     macAddress: string,
-    sensorModel: string,
+    romAddress: string,
     range: string
   ): Promise<Reading[]> {
     const readings: Reading[] = [];
@@ -46,7 +46,7 @@ export class ReadingRepository {
       |> range(start: -${range})
       |> filter(fn: (r) => r._measurement == "temperature")
       |> filter(fn: (r) => r.device_id == "${macAddress}")
-      |> filter(fn: (r) => r.sensor_model == "${sensorModel}")
+      |> filter(fn: (r) => r.rom_address == "${romAddress}")
       |> filter(fn: (r) => r._field == "value")
       `;
 

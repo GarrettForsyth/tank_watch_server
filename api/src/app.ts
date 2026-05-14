@@ -27,7 +27,7 @@ const notificationRepository = new NotificationRepository();
 export const app = express();
 app.use(authenticate);
 app.use(express.json());
-app.use('/api/readings/', createReadingsRouter(readingRepository));
+app.use('/api/readings/', createReadingsRouter(readingRepository, sensorRepository, deviceRepository));
 app.use('/api/devices/', createDevicesRouter(deviceRepository));
 app.use('/api/sensors/', createSensorsRouter(sensorRepository));
 app.use('/api/notifications/', createNotificationsRouter(notificationRepository));

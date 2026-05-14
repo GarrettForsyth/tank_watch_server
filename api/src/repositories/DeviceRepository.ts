@@ -13,6 +13,15 @@ import { Sensor } from '../models/Sensor'
 
 export class DeviceRepository {
 
+  getDevice(deviceId: number) : Device | null {
+    const device = db
+      .select()
+      .from(devices)
+      .where(eq(devices.id, deviceId))
+      .get()
+    return  device ? Device.fromDrizzle(device) : null;
+  }
+
   getDeviceByMac(macAddress: string): Device | null {
     const result = db
       .select()
