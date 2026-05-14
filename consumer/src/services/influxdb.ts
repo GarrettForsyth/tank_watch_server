@@ -30,8 +30,12 @@ const writeApi = client.getWriteApi(
     // explicitly setting them here they wre not being applied.
     {
       batchSize: 1000,        // How many points to batch before a write
-      flushInterval: 1000     // How often (in ms) to write the current batch
-    }
+      flushInterval: 1000,    // How often (in ms) to write the current batch
+      writeFailed: (error, lines, _attempts, _expires) => {
+        console.error('InfluxDB write failed:', error.message);
+        console.error('Failed lines:', lines);
+      }
+    },
 );
 
 export function writeReading(
