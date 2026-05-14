@@ -50,7 +50,7 @@ export class SensorRepository {
     return result ? SensorConfig.fromDrizzle(result.sensor_config) : null;
   }
 
-  getAll(userId: number): SensorConfig[] {
+  getAllSensorConfigurations(userId: number): SensorConfig[] {
     let result = db
       .select()
       .from(sensorConfig)
