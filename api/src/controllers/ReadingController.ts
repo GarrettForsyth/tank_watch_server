@@ -13,7 +13,6 @@ import { DeviceRepository } from '../repositories/DeviceRepository'
 
 // TODO: Might want to revisit the allowed ranges here
 const GetQuerySchema = z.object({
-  deviceId: z.coerce.number().min(1),
   sensorId: z.coerce.number().min(1),
   range: z.enum(['1h', '6h', '24h', '7d', '30d']).default('24h')
 })
@@ -34,17 +33,17 @@ export class ReadingController {
     try {
       const query = GetQuerySchema.parse(req.query);
 
-      // Get the device info from the id
-      const device = this.deviceRepository.getDevice(query.deviceId);
-      if (!device) {
-        res.status(404).json({ message: 'No device found' });
-        return;
-      }
-
       // Get the sensor info from the id
       const sensor = this.sensorRepository.getSensor(query.sensorId);
       if (!sensor) {
         res.status(404).json({ message: 'No sensor found' });
+        return;
+      }
+
+      // Get the device info from the sensor
+      const device = this.deviceRepository.getDevice(sensor.deviceId);
+      if (!device) {
+        res.status(404).json({ message: 'No device found' });
         return;
       }
 
