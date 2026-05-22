@@ -27,6 +27,20 @@ export class SensorController {
 
   constructor(private readonly sensorRepository: SensorRepository) {}
 
+  async getSensor(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const params = GetSensorParams.parse(req.params)
+      const sensor = this.sensorRepository.getSensor(params.sensorId);
+      res.json(sensor);
+    } catch (error) {
+      next(error)
+    }
+  }
+
   async getConfiguration(
     req: Request,
     res: Response,

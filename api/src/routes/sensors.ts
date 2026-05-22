@@ -15,6 +15,11 @@ export function createSensorsRouter(sensorRepository: SensorRepository) {
     const router = Router();
     const controller = new SensorController(sensorRepository);
 
+    // Get sensor
+    router.get('/:sensorId', (req, res, next) =>
+        controller.getSensor(req, res, next)
+    );
+
     // Get sensor configuration
     router.get('/:sensorId/config', (req, res, next) =>
         controller.getConfiguration(req, res, next)
