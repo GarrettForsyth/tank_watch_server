@@ -10,10 +10,16 @@
 import { Router } from 'express'
 import { SensorRepository } from '../repositories/SensorRepository'
 import { SensorController } from '../controllers/SensorController'
+import { DeviceRepository } from '../repositories/DeviceRepository';
+import { TankRepository } from '../repositories/TankRepository';
 
-export function createSensorsRouter(sensorRepository: SensorRepository) {
+export function createSensorsRouter(
+  sensorRepository: SensorRepository,
+  deviceRepository: DeviceRepository,
+  tankRepository: TankRepository
+) {
     const router = Router();
-    const controller = new SensorController(sensorRepository);
+    const controller = new SensorController(sensorRepository, deviceRepository, tankRepository);
 
     // Get sensor
     router.get('/:sensorId', (req, res, next) =>

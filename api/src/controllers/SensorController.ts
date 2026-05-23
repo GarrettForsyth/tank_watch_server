@@ -7,6 +7,8 @@
  ******************************************************************************/
 import type { Request, Response, NextFunction } from 'express'
 import { SensorRepository } from '../repositories/SensorRepository'
+import { DeviceRepository } from '../repositories/DeviceRepository'
+import { TankRepository } from '../repositories/TankRepository'
 import { z } from 'zod'
 
 const GetSensorParams = z.object({
@@ -25,7 +27,11 @@ const SensorConfigSchema = z.object({
 
 export class SensorController {
 
-  constructor(private readonly sensorRepository: SensorRepository) {}
+  constructor(
+    private readonly sensorRepository: SensorRepository,
+    private readonly deviceRepository: DeviceRepository,
+    private readonly tankRepository: TankRepository,
+  ) {}
 
   async getSensor(
     req: Request,
@@ -35,7 +41,19 @@ export class SensorController {
     try {
       const params = GetSensorParams.parse(req.params)
       const sensor = this.sensorRepository.getSensor(params.sensorId);
-      res.json(sensor);
+      if (!sensor) {
+        res.status(404).json({ error: 'Sensor not found' })
+        return
+      }
+
+      const device = this.deviceRepository.getDevice(sensor?.deviceId)
+      const tank = device?.tankId ? this.tankRepository.getTank(device.tankId) : null
+
+      res.json({
+        ...sensor,
+        deviceName: device?.name ?? device?.macAddress,
+        tankName: tank?.name ?? '?'
+      });
     } catch (error) {
       next(error)
     }
