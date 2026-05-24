@@ -7,3 +7,4 @@ node_modules/
 tankwatch.db
 tankwatch.db-shm
 tankwatch.db-wal
+*adminsdk*

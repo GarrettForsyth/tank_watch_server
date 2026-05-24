@@ -10,5 +10,26 @@ import dotenv from 'dotenv';
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 import { startMqttConsumer } from './services/mqtt';
+import { getSubscriber, CHANNELS } from '@tankwatch/shared-infra';
+import { ConfigUpdated } from '@tankwatch/shared-events';
+import { invalidateConfig } from './services/configCache';
+
+function startConfigWatcher(): void {
+  const subscriber = getSubscriber();
+  subscriber.subscribe(CHANNELS.CONFIG_UPDATED);
+
+  subscriber.on('message', (channel: string, message: string) => {
+    if (channel !== CHANNELS.CONFIG_UPDATED) return;
+
+    try {
+      const event: ConfigUpdated = JSON.parse(message);
+      invalidateConfig(event.romAddress);
+      console.log(`Config cache invalidated for sensor: ${event.romAddress}`);
+    } catch {
+      console.warn('Failed to parse config:updated event:', message);
+    }
+  });
+}
 
 startMqttConsumer();
+startConfigWatcher();

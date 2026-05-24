@@ -22,6 +22,13 @@
 import mqtt, { MqttClient } from 'mqtt';
 import { writeReading } from './influxdb';
 import { upsertDeviceAndSensor } from './sqliteService';
+import { getConfig, loadConfig } from './configCache';
+import { evaluate } from './AlertEvaluator';
+import { getPublisher, CHANNELS } from '@tankwatch/shared-infra';
+import { db } from '@tankwatch/shared-db/src/db/index';
+import { sensors, devices, tanks, pushTokens } from '@tankwatch/shared-db/src/db/schema';
+import { eq } from 'drizzle-orm';
+import { AlertTrigger, BreachType } from '@tankwatch/shared-events';
 
 const TOPIC = 'tankwatch/#';
 
@@ -60,6 +67,75 @@ function parsePayload(payload: Buffer): number | null {
     }
 }
 
+/**
+  * This hits the database to get the informatino to pass to the 
+  * notification service. It's a slow query but not expected to
+  * hit often.
+  */
+async function buildAndPublishAlert(
+  romAddress: string,
+  value: number,
+  measurementType: string,
+  breach: BreachType
+): Promise<void> {
+  const row = db
+    .select({
+      sensorId:          sensors.id,
+      sensorDisplayName: sensors.displayName,
+      tankName:          tanks.name,
+      pushToken:         pushTokens.token,
+    })
+    .from(sensors)
+    .innerJoin(devices, eq(devices.id, sensors.deviceId))
+    .innerJoin(tanks, eq(tanks.id, devices.tankId))
+    .innerJoin(pushTokens, eq(pushTokens.userId, tanks.userId))
+    .where(eq(sensors.romAddress, romAddress))
+    .get();
+
+  if (!row) {
+    console.warn(`Alert triggered for ${romAddress} but couldn't resolve sensor/tank info — skipping`);
+    return;
+  }
+
+  const alert: AlertTrigger = {
+    sensorId:          String(row.sensorId),
+    tankName:          row.tankName,
+    sensorDisplayName: row.sensorDisplayName ?? 'Unknown Sensor',
+    value,
+    measurementType,
+    breach,
+    pushToken:        row.pushToken
+  };
+
+  await getPublisher().publish(CHANNELS.ALERT_TRIGGER, JSON.stringify(alert));
+  console.log(`Alert published for sensor ${romAddress}: ${breach}`);
+}
+
+/**
+  * Checks the reading against the sensor's configured threshold. 
+  * If outside - gathers data and passes to the notification service.
+  */
+async function evaluateAndAlert(
+  romAddress: string,
+  value: number,
+  measurementType: string
+): Promise<void> {
+  let config = getConfig(romAddress);
+  if (!config) {
+    loadConfig(romAddress);
+    config = getConfig(romAddress);
+  }
+
+  if (!config) return;
+  if (!config.notificationsEnabled) return;
+  if (config.minValue === null || config.maxValue === null) return;
+
+  const breach = evaluate(value, { minValue: config.minValue, maxValue: config.maxValue });
+  if (!breach) return;
+
+  await buildAndPublishAlert(romAddress, value, measurementType, breach);
+}
+
 export function startMqttConsumer(): MqttClient {
     const client = mqtt.connect(process.env.MQTT_BROKER_URL!, {
         username: process.env.MQTT_USERNAME!,
@@ -74,7 +150,7 @@ export function startMqttConsumer(): MqttClient {
         });
     });
 
-    client.on('message', (topic, payload) => {
+    client.on('message', async (topic, payload) => {
         const parsed = parseTopic(topic);
         if (!parsed) {
             console.warn(`Unrecognised topic: ${topic}`);
@@ -92,6 +168,12 @@ export function startMqttConsumer(): MqttClient {
         writeReading(value, parsed.deviceId, parsed.measurementType, parsed.sensorModel, parsed.romAddress);
         // Update the SQL database if it's the first time seeing the device or sensor
         upsertDeviceAndSensor(parsed.deviceId, parsed.sensorModel, parsed.romAddress); 
+
+        await evaluateAndAlert(
+          parsed.romAddress,
+          value,
+          parsed.measurementType
+        );
     });
 
     // Just log these events to help with debugging

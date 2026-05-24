@@ -10,6 +10,8 @@ import { SensorRepository } from '../repositories/SensorRepository'
 import { DeviceRepository } from '../repositories/DeviceRepository'
 import { TankRepository } from '../repositories/TankRepository'
 import { z } from 'zod'
+import { getPublisher, CHANNELS } from '@tankwatch/shared-infra';
+import { ConfigUpdated } from '@tankwatch/shared-events';
 
 const GetSensorParams = z.object({
   sensorId: z.coerce.number().int().positive()
@@ -103,11 +105,19 @@ export class SensorController {
         body.minValue,
         body.maxValue
       );
-      if (config) {
-        res.json(config);
-      } else {
+      if (!config) {
         res.status(500).json({ message: 'Failed to modify sensor configuration.' });
+        return
       }
+
+      // Publish config:update event so consumer can invalidate its cache
+      const sensor = this.sensorRepository.getSensor(params.sensorId);
+      if (sensor?.romAddress) {
+        const event: ConfigUpdated = { romAddress: sensor.romAddress };
+        await getPublisher().publish(CHANNELS.CONFIG_UPDATED, JSON.stringify(event));
+      }
+
+      res.json(config)
     } catch (error) {
       next(error)
     }

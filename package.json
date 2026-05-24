@@ -3,7 +3,10 @@
   "private": true,
   "workspaces": [
     "shared-db",
+    "shared-events",
+    "shared-infra",
     "api",
-    "consumer"
+    "consumer",
+    "notification-service"
   ]
 }
