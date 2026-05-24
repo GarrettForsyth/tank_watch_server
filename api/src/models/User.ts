@@ -6,7 +6,7 @@
  * Description: Model for a user.
  ******************************************************************************/
 import type { InferSelectModel } from 'drizzle-orm'
-import { users } from '@tankwatch/shared/src/db/schema'
+import { users } from '@tankwatch/shared-db/src/db/schema'
 type UserRow = InferSelectModel<typeof users>;
 
 export class User {

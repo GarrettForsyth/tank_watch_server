@@ -5,8 +5,8 @@
  * Date: May 10th 2026
  * Description: Repository for accessing notification data.
  ******************************************************************************/
-import { db } from '@tankwatch/shared/src/db/index'
-import { pushTokens } from '@tankwatch/shared/src/db/schema'
+import { db } from '@tankwatch/shared-db/src/db/index'
+import { pushTokens } from '@tankwatch/shared-db/src/db/schema'
 
 export class NotificationRepository {
 

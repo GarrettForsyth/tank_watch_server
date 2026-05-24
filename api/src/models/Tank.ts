@@ -8,7 +8,7 @@
  * A device is the tank that devices are monitoring.
  ******************************************************************************/
 import type { InferSelectModel } from 'drizzle-orm'
-import { tanks } from '@tankwatch/shared/src/db/schema'
+import { tanks } from '@tankwatch/shared-db/src/db/schema'
 type TankRow = InferSelectModel<typeof tanks>;
 
 export class Tank {

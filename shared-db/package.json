@@ -1,5 +1,5 @@
 {
-  "name": "@tankwatch/shared",
+  "name": "@tankwatch/shared-db",
   "version": "1.0.0",
   "description": "Shared database schema, migrations, and seed for TankWatch",
   "main": "dist/index.js",

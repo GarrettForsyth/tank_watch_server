@@ -9,8 +9,8 @@
  * upserts the device and sensor rows so they appear in the system
  * without any manual intervention.
  */
-import { db } from '@tankwatch/shared/src/db/index';
-import { devices, sensors } from '@tankwatch/shared/src/db/schema';
+import { db } from '@tankwatch/shared-db/src/db/index';
+import { devices, sensors } from '@tankwatch/shared-db/src/db/schema';
 import { eq } from 'drizzle-orm';
 
 // Light cache to ease database access 

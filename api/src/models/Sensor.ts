@@ -8,7 +8,7 @@
  * A Sensor is attached to Device and reports Readings.
  ******************************************************************************/
 import type { InferSelectModel } from 'drizzle-orm'
-import { sensors } from '@tankwatch/shared/src/db/schema'
+import { sensors } from '@tankwatch/shared-db/src/db/schema'
 type SensorRow = InferSelectModel<typeof sensors>;
 
 export class Sensor {

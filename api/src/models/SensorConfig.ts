@@ -8,7 +8,7 @@
  * The sensor configuation contains properties that dictates how it behaves.
  ******************************************************************************/
 import type { InferSelectModel } from 'drizzle-orm'
-import { sensorConfig } from '@tankwatch/shared/src/db/schema'
+import { sensorConfig } from '@tankwatch/shared-db/src/db/schema'
 type SensorConfigRow = InferSelectModel<typeof sensorConfig>;
 
 export class SensorConfig {

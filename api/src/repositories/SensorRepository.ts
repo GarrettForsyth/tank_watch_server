@@ -5,8 +5,8 @@
  * Date: May 10th 2026
  * Description: Repository for accessing sensor data.
  ******************************************************************************/
-import { db } from '@tankwatch/shared/src/db/index'
-import { devices, sensors, tanks, sensorConfig, users } from '@tankwatch/shared/src/db/schema'
+import { db } from '@tankwatch/shared-db/src/db/index'
+import { devices, sensors, tanks, sensorConfig, users } from '@tankwatch/shared-db/src/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { SensorConfig } from '../models/SensorConfig'
 import { User } from '../models/User'

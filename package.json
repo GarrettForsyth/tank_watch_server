@@ -2,7 +2,7 @@
   "name": "tankwatch-server",
   "private": true,
   "workspaces": [
-    "shared",
+    "shared-db",
     "api",
     "consumer"
   ]
