@@ -21,14 +21,10 @@
  */
 import mqtt, { MqttClient } from 'mqtt';
 import { writeReading } from './influxdb';
-import { upsertDeviceAndSensor } from './sqliteService';
-import { getConfig, loadConfig } from './configCache';
+import { getConfig } from './configCache';
 import { evaluate } from './AlertEvaluator';
 import { getPublisher, CHANNELS } from '@tankwatch/shared-infra';
-import { db } from '@tankwatch/shared-db/src/db/index';
-import { sensors, devices, tanks, pushTokens } from '@tankwatch/shared-db/src/db/schema';
-import { eq } from 'drizzle-orm';
-import { AlertTrigger, BreachType } from '@tankwatch/shared-events';
+import { SensorBreach, BreachType } from '@tankwatch/shared-infra';
 
 const TOPIC = 'tankwatch/#';
 
@@ -68,47 +64,22 @@ function parsePayload(payload: Buffer): number | null {
 }
 
 /**
-  * This hits the database to get the informatino to pass to the 
-  * notification service. It's a slow query but not expected to
-  * hit often.
+  * Publishes the breach event to Redis
   */
-async function buildAndPublishAlert(
+async function publishBreachEvent(
   romAddress: string,
   value: number,
   measurementType: string,
   breach: BreachType
 ): Promise<void> {
-  const row = db
-    .select({
-      sensorId:          sensors.id,
-      sensorDisplayName: sensors.displayName,
-      tankName:          tanks.name,
-      pushToken:         pushTokens.token,
-    })
-    .from(sensors)
-    .innerJoin(devices, eq(devices.id, sensors.deviceId))
-    .innerJoin(tanks, eq(tanks.id, devices.tankId))
-    .innerJoin(pushTokens, eq(pushTokens.userId, tanks.userId))
-    .where(eq(sensors.romAddress, romAddress))
-    .get();
-
-  if (!row) {
-    console.warn(`Alert triggered for ${romAddress} but couldn't resolve sensor/tank info — skipping`);
-    return;
-  }
-
-  const alert: AlertTrigger = {
-    sensorId:          String(row.sensorId),
-    tankName:          row.tankName,
-    sensorDisplayName: row.sensorDisplayName ?? 'Unknown Sensor',
-    value,
+  const breachEvent: SensorBreach = {
+    romAddress,
     measurementType,
-    breach,
-    pushToken:        row.pushToken
-  };
-
-  await getPublisher().publish(CHANNELS.ALERT_TRIGGER, JSON.stringify(alert));
-  console.log(`Alert published for sensor ${romAddress}: ${breach}`);
+    value,
+    breachType: breach,
+  }
+  await getPublisher().publish(CHANNELS.SENSOR_BREACH, JSON.stringify(breachEvent))
+  console.log(`Alert published on ${CHANNELS.SENSOR_BREACH} for sensor ${romAddress}: ${breach}`);
 }
 
 /**
@@ -120,12 +91,7 @@ async function evaluateAndAlert(
   value: number,
   measurementType: string
 ): Promise<void> {
-  let config = getConfig(romAddress);
-  if (!config) {
-    loadConfig(romAddress);
-    config = getConfig(romAddress);
-  }
-
+  let config = await getConfig(romAddress);
   if (!config) return;
   if (!config.notificationsEnabled) return;
   if (config.minValue === null || config.maxValue === null) return;
@@ -133,7 +99,7 @@ async function evaluateAndAlert(
   const breach = evaluate(value, { minValue: config.minValue, maxValue: config.maxValue });
   if (!breach) return;
 
-  await buildAndPublishAlert(romAddress, value, measurementType, breach);
+  await publishBreachEvent(romAddress, value, measurementType, breach);
 }
 
 export function startMqttConsumer(): MqttClient {
@@ -164,16 +130,23 @@ export function startMqttConsumer(): MqttClient {
         }
 
         console.log(`[${parsed.deviceId}] ${parsed.measurementType}/${parsed.sensorModel}/${parsed.romAddress}: ${value}`);
-        // Record the reading in the real time database
-        writeReading(value, parsed.deviceId, parsed.measurementType, parsed.sensorModel, parsed.romAddress);
-        // Update the SQL database if it's the first time seeing the device or sensor
-        upsertDeviceAndSensor(parsed.deviceId, parsed.sensorModel, parsed.romAddress); 
 
-        await evaluateAndAlert(
-          parsed.romAddress,
-          value,
-          parsed.measurementType
-        );
+        // Record the reading in the real time database
+        try {
+          writeReading(value, parsed.deviceId, parsed.measurementType, parsed.sensorModel, parsed.romAddress);
+        } catch (err) {
+          console.error(`[mqtt] unhandled error writing reading:`, err)
+        }
+
+        try {
+          await evaluateAndAlert(
+            parsed.romAddress,
+            value,
+            parsed.measurementType
+          );
+        } catch (err) {
+          console.error(`[mqtt] unhandled error proessing message:`, err)
+        }
     });
 
     // Just log these events to help with debugging

@@ -8,7 +8,6 @@
     "dev": "cross-env NODE_ENV=development ts-node-dev --respawn src/index.ts"
   },
   "dependencies": {
-    "@tankwatch/shared-events": "file:../shared-events",
     "@tankwatch/shared-infra": "file:../shared-infra",
     "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",

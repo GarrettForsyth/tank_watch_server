@@ -9,50 +9,56 @@
  * thresholds. To avoid hitting the database too much, a cache is kept and
  * updated when configuration updates are recived on redis.
  ******************************************************************************/
-import { db } from '@tankwatch/shared-db/src/db/index';
-import { sensors, sensorConfig } from '@tankwatch/shared-db/src/db/schema';
-import { eq } from 'drizzle-orm';
+import { SensorConfigUpdated } from '@tankwatch/shared-infra/src/events';
 
 export type CachedSensorConfig = {
-  sensorId: number
   notificationsEnabled: boolean
   minValue: number | null
   maxValue: number | null
 }
 
-type ConfigCache = Map<string, CachedSensorConfig> // romAddress to config
+const cache = new Map<string, CachedSensorConfig>()
+const CORE_API_URL = process.env.CORE_SERVICE ?? ""
 
-const cache: ConfigCache = new Map();
+// Called on every reading — hits cache first, falls back to HTTP (rarely expect to hit HTTP after start)
+export async function getConfig(romAddress: string): Promise<CachedSensorConfig | null> {
+  const cached = cache.get(romAddress)
 
-export function loadConfig(romAddress: string): void {
-  const row = db
-    .select({
-      sensorId:             sensorConfig.sensorId,
-      notificationsEnabled: sensorConfig.notificationsEnabled,
-      minValue:             sensorConfig.minValue,
-      maxValue:             sensorConfig.maxValue,
-    })
-    .from(sensorConfig)
-    .innerJoin(sensors, eq(sensors.id, sensorConfig.sensorId))
-    .where(eq(sensors.romAddress, romAddress))
-    .get();
+  if (cached) return cached
 
-  if (!row) return; // no config set yet — leave cache empty for this sensor
+  try {
+    const res = await fetch(`${CORE_API_URL}/internal/sensors/config?romAddress=${romAddress}`)
+    if (res.status === 404) {
+      console.warn(`[configCache] config not found for ${romAddress}`)
+      return null
+    } 
+    if (!res.ok) throw new Error(`Config fetch failed for ${romAddress}: ${res.status}`)
 
-  cache.set(romAddress, row);
+    const config: CachedSensorConfig = await res.json()
+    cache.set(romAddress, config)
+    return config
+  } catch (err) {
+    console.warn(`[configCache] core-api unreachable, skipping evaluation for ${romAddress}:`, err)
+    return null
+  }
 }
 
-export function getConfig(romAddress: string): CachedSensorConfig | null {
-  return cache.get(romAddress) ?? null;
+// Called when sensor:config-updated arrives — fat event, no HTTP needed
+export function updateConfig(event: SensorConfigUpdated): void {
+  cache.set(event.romAddress, {
+    notificationsEnabled: event.notificationsEnabled,
+    minValue: event.minValue,
+    maxValue: event.maxValue,
+  })
 }
 
 export function invalidateConfig(romAddress: string): void {
   cache.delete(romAddress);
-  loadConfig(romAddress);
+  getConfig(romAddress);
 }
 
 export function invalidateAll(): void {
   const romAddresses = [...cache.keys()];
   cache.clear();
-  romAddresses.forEach(loadConfig);
+  romAddresses.forEach(getConfig);
 }

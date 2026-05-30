@@ -4,7 +4,7 @@
  * Date: May 24th 2026
  * Description: Determines if an alert should be sent based on a reading.
  */
-import { BreachType } from '@tankwatch/shared-events';
+import { BreachType } from '@tankwatch/shared-infra';
 
 export type ThresholdConfig = {
   minValue: number

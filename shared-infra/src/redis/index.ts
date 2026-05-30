@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Filename: index.ts
+ * Filename: redis/index.ts
  * Project: Tank Watch (Server)
  * Author: Garrett Forsyth
  * Date: May 24th 2026
@@ -11,8 +11,9 @@
 import Redis from 'ioredis';
 
 export const CHANNELS = {
-  ALERT_TRIGGER: 'alert:trigger',     // Triggered when readings are detected outside their threshold
-  CONFIG_UPDATED: 'config:updated',   // Triggered when a sensor's configuration is updated
+  SENSOR_BREACH: 'sensor:breach',                             // Breach detected
+  NOTIFICATION_DISPATCH: 'notification:dispatch',             // FCM Notification requested
+  SENSOR_CONFIG_UPDATED: 'sensor:config-updated',             // Sensor's threshold changes
 } as const;
 
 let publisherInstance: Redis | null = null;

@@ -1,0 +1,33 @@
+{
+  "name": "@tankwatch/core-api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development ts-node src/index.ts",
+    "build": "tsc",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "cross-env NODE_ENV=development ts-node src/db/seed.ts",
+    "db:studio": "drizzle-kit studio"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@tankwatch/shared-infra": "*",
+    "dotenv": "^17.x",
+    "express": "^4.x",
+    "zod": "^3.x",
+    "drizzle-orm": "^0.45.2",
+    "better-sqlite3": "^9.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.x",
+    "@types/node": "^25.x",
+    "cross-env": "^10.1.0",
+    "ts-node": "^10.x",
+    "typescript": "^6.x",
+    "@types/better-sqlite3": "^7.6.13",
+    "drizzle-kit": "^0.31.10"
+  }
+}

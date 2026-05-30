@@ -2,11 +2,18 @@
   "name": "tankwatch-server",
   "private": true,
   "workspaces": [
-    "shared-db",
-    "shared-events",
+    "gateway",
     "shared-infra",
-    "api",
+    "core-api",
+    "readings-api",
     "consumer",
     "notification-service"
-  ]
+  ],
+  "scripts": {
+    "predev": "npm run build -w shared-infra",
+    "dev": "concurrently -n \"gateway,core-api,readings-api,consumer,notification\" -c \"blue,green,cyan,yellow,magenta\" \"npm run dev -w gateway\" \"npm run dev -w core-api\" \"npm run dev -w readings-api\" \"npm run dev -w consumer\" \"npm run dev -w notification-service\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.0"
+  }
 }
