@@ -12,11 +12,11 @@ import { TankRepository } from '../repositories/TankRepository'
 import { z } from 'zod'
 import { getPublisher, SensorConfigUpdated, CHANNELS } from '@tankwatch/shared-infra';
 
-const GetSensorParams = z.object({
+export const SensorRouteParams = z.object({
   sensorId: z.coerce.number().int().positive()
 })
 
-const SensorConfigSchema = z.object({
+export const UpsertSensorConfigBody = z.object({
   updateIntervalSeconds: z.number().int().positive().min(10),
   notificationsEnabled: z.boolean(),
   minValue: z.number().int().nullable(),
@@ -40,7 +40,7 @@ export class SensorController {
     next: NextFunction
   ): Promise<void> {
     try {
-      const params = GetSensorParams.parse(req.params)
+      const params = SensorRouteParams.parse(req.params)
       const sensor = this.sensorRepository.getSensor(params.sensorId);
       if (!sensor) {
         res.status(404).json({ error: 'Sensor not found' })
@@ -68,7 +68,7 @@ export class SensorController {
     try {
       // TODO: Parse user_id from auth and filter by that
       const tempUserId = 1;
-      const params = GetSensorParams.parse(req.params)
+      const params = SensorRouteParams.parse(req.params)
       const config = this.sensorRepository.getConfiguration(params.sensorId, tempUserId);
       if (config) {
         res.json(config);
@@ -89,14 +89,14 @@ export class SensorController {
       // TODO: Parse user_id from auth and filter by that
       // TODO: Check if sensor belongs to user and return unauth if not
       const tempUserId = 1;
-      const params = GetSensorParams.parse(req.params);
+      const params = SensorRouteParams.parse(req.params);
       const accessible = this.sensorBelongsToUser(params.sensorId, tempUserId);
       if (!accessible) {
         res.status(404).json({ message: 'Sensor not found' });
         return;
       }
 
-      const body = SensorConfigSchema.parse(req.body);
+      const body = UpsertSensorConfigBody.parse(req.body);
       const config = this.sensorRepository.upsertConfiguration(
         params.sensorId,
         body.updateIntervalSeconds,

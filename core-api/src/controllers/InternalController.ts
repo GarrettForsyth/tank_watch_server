@@ -9,7 +9,7 @@ import type { Request, Response, NextFunction } from 'express'
 import { SensorRepository } from '../repositories/SensorRepository'
 import { z } from 'zod'
 
-const InternalGetConfigSchema = z.object({
+export const GetConfigByRomAddressQuery = z.object({
   romAddress: z.coerce.string().min(1),
 })
 
@@ -24,7 +24,7 @@ export class InternalController {
   ): Promise<void> {
     // TODO: Auth internal services using secret keys
     try {
-      const romAddress = InternalGetConfigSchema.parse(req.query)?.romAddress
+      const romAddress = GetConfigByRomAddressQuery.parse(req.query)?.romAddress
       const config = this.sensorRepository.getConfigurationByRomAddress(romAddress);
       if (config) {
         res.json(config);

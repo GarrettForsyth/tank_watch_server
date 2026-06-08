@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "cross-env NODE_ENV=development ts-node src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run"
   },
   "license": "ISC",
   "dependencies": {
@@ -28,6 +29,7 @@
     "ts-node": "^10.x",
     "typescript": "^6.x",
     "@types/better-sqlite3": "^7.6.13",
-    "drizzle-kit": "^0.31.10"
+    "drizzle-kit": "^0.31.10",
+    "vitest": "^2.0.0"
   }
 }

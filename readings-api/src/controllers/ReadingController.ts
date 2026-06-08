@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { ReadingRepository } from '../repositories/ReadingRepository'
 
 // TODO: Might want to revisit the allowed ranges here
-const GetQuerySchema = z.object({
+export const GetReadingsQuery = z.object({
   romAddress: z.coerce.string().min(1),
   range: z.enum(['1h', '6h', '24h', '7d', '30d']).default('24h')
 })
@@ -25,7 +25,7 @@ export class ReadingController {
     next: NextFunction
   ): Promise<void> {
     try {
-      const query = GetQuerySchema.parse(req.query);
+      const query = GetReadingsQuery.parse(req.query);
       const readings = await this.readingRepository.getLastReadings(
         query.romAddress,
         query.range

@@ -9,7 +9,7 @@ import type { Request, Response, NextFunction } from 'express'
 import { NotificationRepository } from '../repositories/NotificationRepository'
 import { z } from 'zod'
 
-const TokenSchema = z.object({
+export const UpsertPushTokenBody = z.object({
   token: z.string().min(1)
 })
 
@@ -25,7 +25,7 @@ export class NotificationController {
     try {
       // TODO: Parse user_id from auth and filter by that
       const tempUserId = 1;
-      const body = TokenSchema.parse(req.body);
+      const body = UpsertPushTokenBody.parse(req.body);
       this.notificationRepository.upsertToken(body.token, tempUserId);
       res.status(204).send();
     } catch (error) {
