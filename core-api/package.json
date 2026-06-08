@@ -11,6 +11,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "cross-env NODE_ENV=development ts-node src/db/seed.ts",
     "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "license": "ISC",
