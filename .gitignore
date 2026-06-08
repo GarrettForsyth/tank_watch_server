@@ -8,3 +8,4 @@ tankwatch.db
 tankwatch.db-shm
 tankwatch.db-wal
 *adminsdk*
+*.swp
