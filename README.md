@@ -1,419 +1,248 @@
-# tankwatch-server
+# TankWatch — Server
 
-Backend infrastructure for TankWatch — an IoT aquarium monitoring system. This repo contains the broker and database configuration, the consumer service that bridges MQTT into InfluxDB, and the Express REST API that serves data to the Android app.
+TankWatch is a personal IoT aquarium monitoring system. I'm building it to collect data to help me understand what's 'really' happening inside my aquarium. I hope for it to one day give me insight into why my fish and plants thrive.. or not. Plus it's a fun intersection between my interest in coding and fishkeeping.
 
-## What's in here
+Right now, the key features are:
+- Visualizing historical sensor data through a mobile client app 
+- Receiving alert notifications when sensor readings breach a configured threshold
 
-| Path | Purpose |
+The idea is sensors connected to an ESP32 board publish to an MQTT broker hosted in the cloud. The backend monitors incoming readings and alerts the mobile client when they breach their configured threshold. The backend also offers an API for the mobile client to gather historical sensor data.
+
+This repo contains the backend: Node.js/TypeScript microservices, a Mosquitto MQTT broker, InfluxDB for time-series data, SQLite for config, and Redis as an internal event bus.
+
+**Related repos:** [tankwatch-android](https://github.com/garrettforsyth/tankwatch-android) · [tankwatch-firmware](https://github.com/garrettforsyth/tankwatch-firmware)
+
+---
+
+## Demo
+
+![TankWatch Demo](docs/tankwatch_demo.gif)
+
+---
+
+## Overview
+The backend has taken an event-driven microservice approach. Currently the backend handles sensor readings published by device sensors, provides data to the mobile client app, and alerts the client app when reading thresholds are breached.
+
+For simplicity, all backend services and infastructure are deployed on a single VPS (Digital Ocean). Though this is a personal project with limited data volume, design decisions were made with reliability, scalability, and maintainability in mind: 
+
+- The microservice approach offers resilience; a fault in one service doesn't bring down the others. 
+- It also offers scalability, since services could be distributed across machines or scaled independently as load grows (the consumer, for example, could be replicated horizontally to handle higher reading volume without touching any other service). 
+- It is also maintainable; Each service also owns a single responsibility and a single data store: core-api owns SQLite, readings-api owns InfluxDB, the gateway owns nothing (which keeps each component focused and independently understandable)
+
+Roadmap:
+- Additional sensor support: water level, total dissolved solids (TDS), pH
+- Authentication: currently stubbed - intend on using Clerk
+- Device provisioning flow
+- Sensor configuration
+
+## Architecture / Data Flow
+
+![Architecture diagram](docs/tankwatch_flows.png)
+
+### Normal reading (every 30 seconds)
+1. ESP32 reads DS18B20, publishes `{ "value": 24.0625 }` to `tankwatch/{deviceId}/readings/temperature/ds18b20/{romAddress}`
+2. Consumer writes measurement to InfluxDB
+3. Consumer evaluates against cached thresholds
+4. In range → done. Breach → `sensor:breach` → core-api enriches → `notification:dispatch` → notification-service checks cooldown → FCM
+
+### Config update
+1. Android calls `PUT /api/sensors/:id/config`
+2. Core-api writes to SQLite, publishes fat `sensor:config-updated` event to Redis
+3. Consumer updates in-memory threshold cache directly from event payload — no re-fetch
+
+---
+
+### Services
+
+| Service | Role |
 |---|---|
-| `docker-compose.yml` | Production: spins up Mosquitto and InfluxDB |
-| `docker-compose.dev.yml` | Local dev: spins up InfluxDB only |
-| `mosquitto.conf` | Broker configuration (used by Docker and native installs) |
-| `mosquitto_passwords` | Hashed credentials file — not committed, must be generated on the server |
-| `mosquitto_passwords.example` | Documents the expected format and generation command |
-| `pm2.config.js` | pm2 process definitions for production |
-| `tankwatch.db` | SQLite database — not committed, created automatically on first run |
-| `shared/` | `@tankwatch/shared` — SQLite schema, migrations, and db connection shared across packages |
-| `consumer/` | Node.js/TypeScript service — subscribes to MQTT, writes to InfluxDB |
-| `api/` | Node.js/TypeScript Express API — serves readings and config to the Android app |
+| **gateway** | Backend-for-Frontend pattern (BFF), only externally exposed service. Proxies `/api/*` to core-api and readings-api. |
+| **core-api** | Owns SQLite — devices, sensors, config, FCM tokens. Handles breach enrichment (gathers details for breach notification) and config updates. |
+| **readings-api** | Thin InfluxDB query layer. Read-only time-series access. |
+| **consumer** | Subscribes to MQTT, writes readings to InfluxDB, evaluates thresholds, publishes breach events to Redis. |
+| **notification-service** | Subscribes to Redis `notification:dispatch`, applies 30-minute cooldown per sensor/direction, sends FCM. |
+
+### Infrastructure (Docker)
+
+| Component | Role |
+|---|---|
+| Mosquitto | MQTT broker — receives ESP32 publishes |
+| InfluxDB v2 | Time-series readings |
+| Redis | Internal pub/sub event bus |
+| SQLite | Domain store — not containerized, flat file on disk |
+
+### Firewall (production VPS)
+
+Only four ports are open externally:
+
+| Port | Purpose |
+|---|---|
+| 22 | SSH |
+| 80 | HTTP (nginx — Certbot verification + HTTP→HTTPS redirect) |
+| 443 | HTTPS API (nginx → gateway:3000) |
+| 1883 | MQTT (ESP32 publishes) |
+
+---
+
+## API Endpoints
+
+All routes go through the gateway (`https://tankwatch.duckdns.org`).
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/devices` | List devices for the current user |
+| `GET` | `/api/devices/:id/sensors` | List sensors for a device |
+| `GET` | `/api/readings` | Time-series readings (`?romAddress=&measurementType=&range=`) |
+| `GET` | `/api/sensors/:id/config` | Sensor threshold config |
+| `PUT` | `/api/sensors/:id/config` | Upsert sensor threshold config |
+| `PUT` | `/api/notifications/token` | Register/update FCM push token |
 
 ---
 
 ## Local Development
 
-Local dev runs InfluxDB in Docker and Mosquitto natively on the host machine. This avoids WSL2 networking issues that prevent external devices (ESP32) from reaching containerised Mosquitto on Windows.
-
 ### Prerequisites
 
-- Docker and Docker Compose
-- Node.js 22+
-- Mosquitto installed natively on Windows ([mosquitto.org](https://mosquitto.org/download/))
+- Node.js 22
+- Docker Desktop
+- Mosquitto installed natively on Windows (Docker's WSL2 networking stack prevents ESP32 from reaching a containerized broker)
 
-### 1. Configure native Mosquitto
+### 1. Clone and install
 
-Edit `C:\Program Files\Mosquitto\mosquitto.conf`:
-
-```
-listener 1883
-allow_anonymous false
-password_file C:\Users\<YourUsername>\mosquitto\mosquitto_passwords
-
-persistence true
-persistence_location C:\Users\<YourUsername>\mosquitto\data\
-log_dest file C:\Users\<YourUsername>\mosquitto\log\mosquitto.log
+```bash
+git clone https://github.com/garrettforsyth/tank_watch_server
+cd tank_watch_server
+npm install        # always from the root — never from a sub-package
 ```
 
-Create the required directories and generate the password file (run PowerShell as Administrator):
+### 2. Environment files
 
-```powershell
-mkdir "C:\Users\<YourUsername>\mosquitto\log"
-mkdir "C:\Users\<YourUsername>\mosquitto\data"
-cd "C:\Program Files\Mosquitto"
-.\mosquitto_passwd -c "C:\Users\<YourUsername>\mosquitto\mosquitto_passwords" tankwatch
+Each service reads from `.env.development`. Copy the examples and fill in your values:
+
+```bash
+cp notification-service/.env.example notification-service/.env.development
 ```
 
-Start the Mosquitto service:
-
-```powershell
-net start mosquitto
+**core-api** `.env.development`:
+```
+SQLITE_DB_PATH=../tankwatch.db
 ```
 
-### 2. Start local InfluxDB
+**notification-service** `.env.development`:
+```
+REDIS_HOST=localhost
+REDIS_PORT=6379
+FIREBASE_SERVICE_ACCOUNT_PATH=./firebase-service-account.json
+```
+
+Place your Firebase service account JSON at `notification-service/firebase-service-account.json` (gitignored via `*adminsdk*`).
+
+### 3. Start infrastructure
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-On first run, visit `http://localhost:8086` and complete the initial setup:
-- Create an organisation (e.g. `tankwatch`)
-- Create a bucket (e.g. `tankwatch`)
-- Copy the generated API token — you will not see it again without regenerating
-
-### 3. Configure the consumer
+This starts InfluxDB (port 8086) and Redis (port 6379). Start Mosquitto natively:
 
 ```bash
-cd consumer
-cp .env.example .env.development
+net start mosquitto      # Windows
 ```
 
-Fill in `.env.development` with your local values:
-
-```
-MQTT_BROKER_URL=mqtt://localhost:1883
-MQTT_USERNAME=tankwatch
-MQTT_PASSWORD=<your mosquitto password>
-
-INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=<your influxdb token>
-INFLUXDB_ORG=tankwatch
-INFLUXDB_BUCKET=tankwatch
-```
-
-### 4. Configure the API
+### 4. Migrate and seed the database
 
 ```bash
-cd api
-cp .env.example .env.development
+npm run db:migrate -w core-api
+npm run db:seed -w core-api
 ```
 
-Fill in `.env.development`:
+If you need to re-seed, delete `tankwatch.db` first.
 
-```
-INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=<your influxdb token>
-INFLUXDB_ORG=tankwatch
-INFLUXDB_BUCKET=tankwatch
-
-SQLITE_DB_PATH=../tankwatch.db
-
-PORT=3000
-```
-
-### 5. Install dependencies
-
-Always install from the repo root — this ensures npm workspaces hoists all dependencies correctly and prevents duplicate installs of shared packages like `drizzle-orm`:
+### 5. Start all services
 
 ```bash
-cd tank_watch_server
-npm install
+npm run dev
 ```
 
-Never run `npm install` from inside a sub-package (`consumer/`, `api/`, `shared/`) — this can create nested `node_modules` and break shared dependency resolution.
+This builds `shared-infra` first (via `predev`), then starts all five services concurrently.
 
-### 6. Run the database migration
-
-On first run, or after any schema change, apply pending migrations from the `shared` package:
+To run a single service:
 
 ```bash
-npm run db:migrate -w shared
-```
-
-This creates `tankwatch.db` at the repo root if it doesn't exist, then applies all pending migrations. See [Database Migrations](#database-migrations) for more detail.
-
-### 7. Run the services
-
-```bash
-# Consumer (terminal 1)
+npm run dev -w core-api
 npm run dev -w consumer
-
-# API (terminal 2)
-npm run dev -w api
 ```
 
-You should see the consumer output:
-```
-Connected to MQTT broker
-Subscribed to tankwatch/#
-```
+### Useful commands
 
-Readings from the ESP32 will appear as they arrive:
+```bash
+npm run db:studio -w core-api        # Drizzle Studio at localhost:4983
+npm run typecheck --workspaces       # type-check all packages
+npm run test --workspaces            # run all tests
 ```
-[A4CF12345678] temperature/ds18b20: 24.06°C
-```
-
-The API will be available at `http://localhost:3000`.
 
 ---
 
-## Database Migrations
+## Tests
 
-The SQLite database (`tankwatch.db`) lives at the repo root, shared between the consumer and API. Schema is managed with [Drizzle ORM](https://orm.drizzle.team). The schema source of truth is `shared/src/db/schema.ts` — Drizzle diffs it to generate migration SQL files.
-
-All database tooling is run from the `shared` package:
+Vitest across `consumer`, `core-api`, and `readings-api`.
 
 ```bash
-# After editing shared/src/db/schema.ts:
-npm run db:generate -w shared   # generates a new SQL file in shared/src/db/migrations/
-npm run db:migrate -w shared    # applies pending migrations to tankwatch.db
-
-# Inspect the database interactively:
-npm run db:studio -w shared     # opens Drizzle Studio in the browser
+npm run test --workspaces --if-present
 ```
 
-Generated migration files live in `shared/src/db/migrations/` and are committed to git. **Never edit or delete a migration file after it has been applied** — Drizzle tracks applied migrations by filename. To undo a change, edit `schema.ts` back to the desired state and generate a new migration.
-
-The `migrations/meta/` directory must also be committed — Drizzle uses it to diff the schema for the next migration.
+- **consumer** — `AlertEvaluator` unit tests (pure function, no I/O)
+- **core-api** — Zod schema unit tests + supertest integration tests against in-memory SQLite
+- **readings-api** — Zod schema unit tests
 
 ---
 
-## Production Deployment (VPS)
+## Deployment
 
-All services run on a single Linux VPS via Docker and pm2. Ubuntu 24.04 is recommended.
+The production VPS is a DigitalOcean 1GB/25GB Ubuntu 24.04 droplet running at `tankwatch.duckdns.org`.
 
-### Prerequisites
-
-- A VPS with Docker, Docker Compose, Node.js 22, and pm2 installed
-- `build-essential` installed — required for `better-sqlite3` to compile from source:
-  ```bash
-  apt-get install -y build-essential
-  ```
-- A swap file is recommended on 1GB RAM droplets — native module compilation is memory-intensive:
-  ```bash
-  fallocate -l 1G /swapfile
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  ```
-- Ports 22, 1883, and 443 open inbound in your firewall
-- InfluxDB (8086) must **not** be exposed externally
-
-### 1. Clone the repo
-
-```bash
-git clone git@github.com:yourusername/tankwatch-server.git
-cd tankwatch-server
-```
-
-### 2. Install dependencies
-
-Always install from the repo root:
-
-```bash
-npm install
-```
-
-### 3. Start the containers
-
-```bash
-docker compose up -d
-```
-
-Verify both containers are running:
-
-```bash
-docker compose ps
-```
-
-### 4. Generate the Mosquitto password file
-
-```bash
-docker run --rm -it -v $(pwd):/mosquitto/config eclipse-mosquitto:2 mosquitto_passwd -c /mosquitto/config/mosquitto_passwords tankwatch
-```
-
-Fix ownership and permissions so the Mosquitto container can read the file:
-
-```bash
-chown 1883:1883 mosquitto_passwords
-chmod 0700 mosquitto_passwords
-```
-
-### 5. Restart Mosquitto to apply auth
-
-```bash
-docker compose restart mosquitto
-```
-
-Verify it started cleanly — you should see `mosquitto version 2.x.x running` with no errors:
-
-```bash
-docker compose logs mosquitto
-```
-
-### 6. Set up InfluxDB
-
-SSH tunnel to access the InfluxDB UI from your local machine:
-
-```bash
-ssh -L 8086:localhost:8086 root@your_droplet_ip
-```
-
-Then visit `http://localhost:8086` and complete the initial setup:
-- Create an organisation (e.g. `tankwatch`)
-- Create a bucket (e.g. `tankwatch`)
-- Copy the generated API token
-
-### 7. Configure the consumer
-
-Create `.env.production` in `consumer/`:
-
-```
-MQTT_BROKER_URL=mqtt://localhost:1883
-MQTT_USERNAME=tankwatch
-MQTT_PASSWORD=<your mosquitto password>
-
-INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=<your influxdb token>
-INFLUXDB_ORG=tankwatch
-INFLUXDB_BUCKET=tankwatch
-```
-
-Build the consumer:
-
-```bash
-cd consumer && npm run build && cd ..
-```
-
-### 8. Configure the API
-
-Create `.env.production` in `api/`:
-
-```
-INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=<your influxdb token>
-INFLUXDB_ORG=tankwatch
-INFLUXDB_BUCKET=tankwatch
-
-SQLITE_DB_PATH=../tankwatch.db
-
-PORT=3000
-```
-
-Build the API:
-
-```bash
-cd api && npm run build && cd ..
-```
-
-### 9. Run the database migration
-
-```bash
-npm run db:migrate -w shared
-```
-
-Lock down the database file so only the process owner can read it:
-
-```bash
-chmod 600 tankwatch.db
-```
-
-### 10. Start all services with pm2
-
-From the repo root:
+### Services managed by pm2
 
 ```bash
 pm2 start pm2.config.js
 pm2 save
-```
-
-Verify both processes are running:
-
-```bash
 pm2 status
-pm2 logs consumer
-pm2 logs api
 ```
 
-### 11. Configure pm2 to start on reboot (one-time setup)
+### Infrastructure managed by Docker
 
 ```bash
-pm2 startup
+docker compose up -d      # Mosquitto + InfluxDB + Redis
 ```
 
-Run the command it outputs, then:
+### CI/CD
 
-```bash
-pm2 save
-```
+GitHub Actions runs on push to `main`:
+
+1. `npm ci` → typecheck → Vitest
+2. On success: SSH into VPS, `git pull`, `npm ci`, `pm2 restart all`
+
+Secrets required: `VPS_HOST`, `VPS_SSH_KEY`.
+
+> **Note:** `npm ci` on the VPS recompiles `better-sqlite3`. If space is an issue, a swap file is recommended before the pipeline runs — verify with `swapon --show`.
 
 ---
 
-## Verifying the setup
 
-Use [MQTT Explorer](https://mqtt-explorer.com) to verify the broker is reachable and auth is working:
+## Tech Stack
 
-- Host: your server IP
-- Port: `1883`
-- Username/password: credentials you set during setup
-
-Use the InfluxDB UI (`http://localhost:8086` via SSH tunnel on VPS, or directly on local dev) to verify readings are landing in the Data Explorer.
-
-Use Drizzle Studio to inspect the SQLite database:
-
-```bash
-npm run db:studio -w shared
-```
-
----
-
-## Updating credentials
-
-To add a new Mosquitto user without wiping existing ones:
-
-```bash
-docker run --rm -it -v $(pwd):/mosquitto/config eclipse-mosquitto:2 mosquitto_passwd -b /mosquitto/config/mosquitto_passwords <username> <password>
-docker compose restart mosquitto
-```
-
-To change an existing user's password, run the same command with their username — it will overwrite their entry.
-
----
-
-## Logs
-
-```bash
-# Docker services
-docker compose logs mosquitto        # Mosquitto broker logs
-docker compose logs influxdb         # InfluxDB logs
-docker compose logs -f mosquitto     # Follow live
-
-# pm2 services
-pm2 logs consumer                    # Consumer logs
-pm2 logs api                         # API logs
-pm2 logs                             # All process logs
-pm2 status                           # Overview of all processes
-```
-
----
-
-## Redeployment
-
-After pulling changes:
-
-```bash
-git pull
-npm install
-cd consumer && npm run build && cd ..
-cd api && npm run build && cd ..
-
-# Only if there are new migrations:
-npm run db:migrate -w shared
-
-pm2 restart all
-pm2 save
-```
-
-If `mosquitto.conf` changed:
-
-```bash
-docker compose restart mosquitto
-```
+| | |
+|---|---|
+| Runtime | Node.js 22 / TypeScript |
+| Services | Express |
+| Time-series DB | InfluxDB v2 |
+| Config DB | SQLite (Drizzle ORM) |
+| Event bus | Redis (ioredis) |
+| MQTT broker | Mosquitto |
+| Push notifications | Firebase Cloud Messaging |
+| Package management | npm workspaces |
+| Tests | Vitest + supertest |
+| Process manager | pm2 |
+| Reverse proxy / SSL | nginx + Let's Encrypt (Certbot) |
+| CI/CD | GitHub Actions |
+| VPS | DigitalOcean Toronto ($6/month) |
