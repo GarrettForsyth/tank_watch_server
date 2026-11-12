@@ -1,0 +1,13 @@
+.git
+.github
+docs
+**/node_modules
+**/dist
+**/.env*
+*.db
+*.db-shm
+*.db-wal
+*adminsdk*
+**/firebase-service-account.json
+secrets
+mosquitto_passwords
