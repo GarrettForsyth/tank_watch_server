@@ -34,17 +34,28 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     if: success()
+    # One deploy at a time; a newer push waits for the running one.
+    concurrency: deploy
     steps:
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
+      # Joins the tailnet as a short-lived device tagged tag:ci, which the
+      # tailnet policy only allows to reach the deploy host over SSH.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd ~/tank_watch_server
-            git pull
-            npm ci
-            npm run build -w shared-infra
-            pm2 restart all
-            pm2 save
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      # The deploy key is locked (in the host's authorized_keys) to running
+      # deploy.sh, so this connection can't do anything else.
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          ssh-keyscan -t ed25519 "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST"
