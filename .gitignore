@@ -9,3 +9,7 @@ tankwatch.db-shm
 tankwatch.db-wal
 *adminsdk*
 *.swp
+
+# Self-hosted deployment
+.env
+secrets/

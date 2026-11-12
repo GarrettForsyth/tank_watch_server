@@ -1,28 +1,135 @@
+# TankWatch — full stack (infrastructure + all Node services).
+#
+#   docker compose up -d --build
+#
+# Secrets/settings come from a `.env` file next to this one (see .env.example).
+#
+# Networking: every container joins the project's private network and reaches
+# the others by service name (redis, influxdb, core-api, ...). Only two ports
+# are published on the host:
+#   - 3000 gateway  : the API for clients (phone app, future dashboard)
+#   - 1883 mosquitto: MQTT for the ESP32
+# Everything else is reachable only from inside the stack.
+#
+# `restart: unless-stopped` + Docker starting at boot = the stack comes back
+# by itself after a reboot or power cut.
+
+name: tankwatch
+
+x-node-service: &node-service
+  restart: unless-stopped
+  build: &node-build
+    context: .
+
 services:
+  # ---------------------------------------------------------------- infra --
   mosquitto:
     image: eclipse-mosquitto:2
+    restart: unless-stopped
     ports:
       - "1883:1883"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto_passwords:/mosquitto/config/passwords
       - mosquitto_data:/mosquitto/data
-    restart: unless-stopped
 
   influxdb:
     image: influxdb:2
+    restart: unless-stopped
+    environment:
+      # First-start setup only; ignored once the volume is initialised.
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_ADMIN_USER:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:?set in .env}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-tankwatch}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-tankwatch}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:?set in .env}
     ports:
-      - "8086:8086"
+      # Web UI, loopback only. From your laptop: ssh -L 8086:localhost:8086 ai-box
+      - "127.0.0.1:8086:8086"
     volumes:
       - influxdb_data:/var/lib/influxdb2
-    restart: unless-stopped
+      - influxdb_config:/etc/influxdb2
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     restart: unless-stopped
+
+  # ------------------------------------------------------------- services --
+  gateway:
+    <<: *node-service
+    build:
+      <<: *node-build
+      args: { SERVICE: gateway }
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      CORE_SERVICE: http://core-api:3001
+      READINGS_SERVICE: http://readings-api:3002
+    depends_on: [core-api, readings-api]
+
+  core-api:
+    <<: *node-service
+    build:
+      <<: *node-build
+      args: { SERVICE: core-api }
+    command: ["sh", "-c", "node dist/db/migrate.js && node dist/index.js"]
+    environment:
+      PORT: 3001
+      SQLITE_DB_PATH: /data/tankwatch.db
+      MIGRATIONS_DIR: /app/core-api/src/db/migrations
+      REDIS_HOST: redis
+    volumes:
+      - core_data:/data
+    depends_on: [redis]
+
+  readings-api:
+    <<: *node-service
+    build:
+      <<: *node-build
+      args: { SERVICE: readings-api }
+    environment:
+      PORT: 3002
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-tankwatch}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-tankwatch}
+    depends_on: [influxdb]
+
+  consumer:
+    <<: *node-service
+    build:
+      <<: *node-build
+      args: { SERVICE: consumer }
+    environment:
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: consumer
+      MQTT_PASSWORD: ${MQTT_CONSUMER_PASSWORD:?set in .env}
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-tankwatch}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-tankwatch}
+      CORE_SERVICE: http://core-api:3001
+      REDIS_HOST: redis
+    depends_on: [mosquitto, influxdb, redis, core-api]
+
+  notification-service:
+    <<: *node-service
+    build:
+      <<: *node-build
+      args: { SERVICE: notification-service }
+    environment:
+      REDIS_HOST: redis
+      FIREBASE_SERVICE_ACCOUNT_PATH: /run/secrets/firebase-service-account.json
+    volumes:
+      # Directory mount so the rest of the stack still starts before the
+      # Firebase key has been placed in ./secrets/.
+      - ./secrets:/run/secrets:ro
+    depends_on: [redis]
 
 volumes:
   mosquitto_data:
   influxdb_data:
+  influxdb_config:
+  core_data:
