@@ -25,7 +25,21 @@ app.use('/api/readings', createProxyMiddleware({
   changeOrigin: false,
 }))
 
-app.use('/api', createProxyMiddleware({ 
+// Only these core-api route groups are client-facing. Everything else on
+// core-api (e.g. /internal/*, used service-to-service by the consumer) must
+// not be reachable through the gateway.
+const PUBLIC_CORE_PREFIXES = ['/devices', '/sensors', '/notifications'];
+
+function isPublicCoreRoute(path: string): boolean {
+  return PUBLIC_CORE_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+  );
+}
+
+app.use('/api', (req, res, next) => {
+  if (isPublicCoreRoute(req.path)) return next();
+  res.status(404).json({ error: 'Not found' });
+}, createProxyMiddleware({
   target: coreApi,
   changeOrigin: false,
 }))
