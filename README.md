@@ -6,7 +6,7 @@ Right now, the key features are:
 - Visualizing historical sensor data through a mobile client app 
 - Receiving alert notifications when sensor readings breach a configured threshold
 
-The idea is sensors connected to an ESP32 board publish to an MQTT broker hosted in the cloud. The backend monitors incoming readings and alerts the mobile client when they breach their configured threshold. The backend also offers an API for the mobile client to gather historical sensor data.
+The idea is sensors connected to an ESP32 board publish to an MQTT broker on a self-hosted home server. The backend monitors incoming readings and alerts the mobile client when they breach their configured threshold. The backend also offers an API for the mobile client to gather historical sensor data.
 
 This repo contains the backend: Node.js/TypeScript microservices, a Mosquitto MQTT broker, InfluxDB for time-series data, SQLite for config, and Redis as an internal event bus.
 
@@ -23,7 +23,7 @@ This repo contains the backend: Node.js/TypeScript microservices, a Mosquitto MQ
 ## Overview
 The backend has taken an event-driven microservice approach. Currently the backend handles sensor readings published by device sensors, provides data to the mobile client app, and alerts the client app when reading thresholds are breached.
 
-For simplicity, all backend services and infastructure are deployed on a single VPS (Digital Ocean). Though this is a personal project with limited data volume, design decisions were made with reliability, scalability, and maintainability in mind: 
+For simplicity, all backend services and infrastructure run as one Docker Compose stack on a single self-hosted Ubuntu server, reachable over a private Tailscale network. Though this is a personal project with limited data volume, design decisions were made with reliability, scalability, and maintainability in mind: 
 
 - The microservice approach offers resilience; a fault in one service doesn't bring down the others. 
 - It also offers scalability, since services could be distributed across machines or scaled independently as load grows (the consumer, for example, could be replicated horizontally to handle higher reading volume without touching any other service). 
@@ -71,12 +71,18 @@ Roadmap:
 | Redis | Internal pub/sub event bus |
 | SQLite | Domain store — not containerized, flat file on disk |
 
-### Firewall (production VPS)
+### Network exposure
 
-Only four ports are open externally:
+Nothing is exposed to the public internet. Clients reach the server over a private [Tailscale](https://tailscale.com) network (tailnet); the ESP32 publishes over the home LAN. Only two ports are published by the Compose stack:
 
-| Port | Purpose |
-|---|---|
+| Port | Purpose | Reachable from |
+|---|---|---|
+| 3000 | Gateway API | LAN + tailnet |
+| 1883 | MQTT (ESP32 publishes) | LAN + tailnet |
+
+Every other service (core-api, readings-api, Redis, InfluxDB, …) is only reachable on the stack's internal Docker network. The gateway only forwards the client-facing route groups below; core-api's service-to-service `/internal/*` routes are not exposed.
+
+---|---|
 | 22 | SSH |
 | 80 | HTTP (nginx — Certbot verification + HTTP→HTTPS redirect) |
 | 443 | HTTPS API (nginx → gateway:3000) |
@@ -86,7 +92,7 @@ Only four ports are open externally:
 
 ## API Endpoints
 
-All routes go through the gateway (`https://tankwatch.duckdns.org`).
+All routes go through the gateway (port 3000 on the server).
 
 | Method | Path | Description |
 |---|---|---|
@@ -199,35 +205,46 @@ npm run test --workspaces --if-present
 
 ## Deployment
 
-The production VPS is a DigitalOcean 1GB/25GB Ubuntu 24.04 droplet running at `tankwatch.duckdns.org`.
+The server is a self-hosted Ubuntu machine on a Tailscale network. Everything — Mosquitto, InfluxDB, Redis and the five Node services — runs from `docker-compose.yml`, built from the single root `Dockerfile` (`--build-arg SERVICE=<workspace>`). Every container uses `restart: unless-stopped`, so the stack comes back on its own after a reboot.
 
-### Services managed by pm2
-
-```bash
-pm2 start pm2.config.js
-pm2 save
-pm2 status
-```
-
-### Infrastructure managed by Docker
+### First-time setup
 
 ```bash
-docker compose up -d      # Mosquitto + InfluxDB + Redis
+git clone https://github.com/garrettforsyth/tank_watch_server && cd tank_watch_server
+cp .env.example .env                # fill in; generate values with: openssl rand -hex 32
+mkdir -p secrets                    # place firebase-service-account.json here
+
+# MQTT users: `consumer` (password = MQTT_CONSUMER_PASSWORD in .env) and `esp32`
+touch mosquitto_passwords
+docker run --rm -v "$PWD/mosquitto_passwords:/pw" eclipse-mosquitto:2 sh -c \
+  'mosquitto_passwd -b /pw consumer <password> && mosquitto_passwd -b /pw esp32 <password> && chown 1883:1883 /pw && chmod 0700 /pw'
+
+docker compose up -d --build
+docker compose exec core-api node dist/db/seed.js   # once, on a fresh database
 ```
+
+core-api applies pending SQLite migrations on every start (`dist/db/migrate.js`).
+
+### Day to day
+
+```bash
+docker compose ps                    # status
+docker compose logs -f consumer      # follow one service's logs
+./deploy.sh                          # pull main and rebuild/restart what changed
+```
+
+InfluxDB's UI is bound to the server's loopback only: `ssh -L 8086:localhost:8086 <server>` then open `http://localhost:8086`.
 
 ### CI/CD
 
 GitHub Actions runs on push to `main`:
 
 1. `npm ci` → typecheck → Vitest
-2. On success: SSH into VPS, `git pull`, `npm ci`, `pm2 restart all`
+2. On success: the runner joins the tailnet as a short-lived `tag:ci` device ([tailscale/github-action](https://github.com/tailscale/github-action)) and SSHes to the server with a deploy key that `authorized_keys` restricts to running `deploy.sh`.
 
-Secrets required: `VPS_HOST`, `VPS_SSH_KEY`.
-
-> **Note:** `npm ci` on the VPS recompiles `better-sqlite3`. If space is an issue, a swap file is recommended before the pipeline runs — verify with `swapon --show`.
+Secrets required: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`.
 
 ---
-
 
 ## Tech Stack
 
@@ -242,7 +259,7 @@ Secrets required: `VPS_HOST`, `VPS_SSH_KEY`.
 | Push notifications | Firebase Cloud Messaging |
 | Package management | npm workspaces |
 | Tests | Vitest + supertest |
-| Process manager | pm2 |
-| Reverse proxy / SSL | nginx + Let's Encrypt (Certbot) |
+| Containers | Docker Compose |
+| Networking | Tailscale (private tailnet) |
 | CI/CD | GitHub Actions |
-| VPS | DigitalOcean Toronto ($6/month) |
+| Hosting | Self-hosted Ubuntu server |
