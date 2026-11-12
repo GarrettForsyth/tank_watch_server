@@ -10,7 +10,7 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from 'zod'
 
-const isDev = process.env.NOD_ENV === 'development';
+const isDev = process.env.NODE_ENV === 'development';
 
 export function errorHandler(
   error: unknown,
