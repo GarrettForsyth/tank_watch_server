@@ -11,7 +11,7 @@ import { ReadingRepository } from '../repositories/ReadingRepository'
 
 // TODO: Might want to revisit the allowed ranges here
 export const GetReadingsQuery = z.object({
-  romAddress: z.coerce.string().min(1),
+  romAddress: z.string().regex(/^[0-9a-f]{32}$/, 'must be a 32-character hex sensor ID'),
   range: z.enum(['1h', '6h', '24h', '7d', '30d']).default('24h')
 })
 
