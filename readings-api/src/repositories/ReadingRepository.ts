@@ -8,7 +8,7 @@
  * Note: There's no ORM for InfluxDB in TypeScript. Instead we use raw Flux.
  ******************************************************************************/
 import { influxQueryApi } from '../db/influxdb'
-import { FluxTableMetaData } from '@influxdata/influxdb-client'
+import { flux, fluxDuration, FluxTableMetaData } from '@influxdata/influxdb-client'
 import { Reading } from '../models/Reading'
 
 const BUCKET = process.env.INFLUXDB_BUCKET!;
@@ -41,27 +41,19 @@ export class ReadingRepository {
     romAddress: string,
     range: string
   ): Promise<Reading[]> {
-    const readings: Reading[] = [];
-
-    const query = `
-      from(bucket: "${BUCKET}")
-      |> range(start: -${range})
+    const query = flux`
+      from(bucket: ${BUCKET})
+      |> range(start: -${fluxDuration(range)})
       |> filter(fn: (r) => r._measurement == "temperature")
-      |> filter(fn: (r) => r.rom_address == "${romAddress}")
+      |> filter(fn: (r) => r.rom_address == ${romAddress})
       |> filter(fn: (r) => r._field == "value")
       `;
 
-    await new Promise<void>((resolve, reject) => {
-      influxQueryApi.queryRows(query, {
-        next(row: string[], tableMeta: FluxTableMetaData) {
-          const record = tableMeta.toObject(row);
-          readings.push(Reading.fromInflux(record));
-        },
-        error: reject,
-        complete: resolve,
-      });
-    });
-
-    return readings;
+    return influxQueryApi.collectRows(
+      query, 
+      (row: string[], tableMeta: FluxTableMetaData) => 
+        Reading.fromInflux(tableMeta.toObject(row)
+      )
+    );
   }
 }
