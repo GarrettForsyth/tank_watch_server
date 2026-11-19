@@ -6,6 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
+# Don't block on failed backups to avoid blocking fixes on crash loops
+./backup.sh pre-deploy || echo "WARNING: pre-deploy backup failed; deploying anyway."
+
 git pull --ff-only origin main
 docker compose up -d --build --remove-orphans
 docker image prune -f >/dev/null
