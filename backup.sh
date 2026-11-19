@@ -32,7 +32,8 @@ echo "Dumping Mosquitto passwords..."
 docker compose exec -T mosquitto cat /mosquitto/config/passwords > "$DUMP_DIR/mosquitto_passwords"
 
 echo "Uploading..."
-restic backup --retry-lock 10m --tag "$TAG" "$DUMP_DIR" .env secrets
+# Absolute paths so every snapshot mirrors the server's layout on restore.
+restic backup --retry-lock 10m --tag "$TAG" "$DUMP_DIR" "$PWD/.env" "$PWD/secrets"
 restic forget --retry-lock 10m --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
 
 # Verify the repo's integrity once a week (Sunday).
